@@ -3,7 +3,8 @@ Intel RealSense D435i Data Collection Script
 Collects linked RGB and Depth frames
 
 Usage:
-    python collect_dataset.py --duration 1200 --fps 5
+    python collect_dataset.py --duration 1200 --fps 30
+    Supports only 6, 15, 30 FPS modes
 """
 import os
 import sys
