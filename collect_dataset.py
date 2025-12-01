@@ -3,7 +3,7 @@ Intel RealSense D435i Data Collection Script
 Collects linked RGB and Depth frames
 
 Usage:
-    python collect_dataset.py --output ./data/my_dataset --duration 1200 --fps 5
+    python collect_dataset.py --duration 1200 --fps 5
 """
 import os
 import sys
@@ -67,8 +67,6 @@ class RealSenseRecorder:
             self.spatial_filter = rs.spatial_filter()
             self.temporal_filter = rs.temporal_filter()
             self.hole_filling = rs.hole_filling_filter()
-            self.decimation = rs.decimation_filter()
-            self.decimation.set_option(rs.option.filter_magnitude, 1)
         
         # Alignment
         if self.align_depth:
@@ -144,7 +142,6 @@ class RealSenseRecorder:
         
         # Apply depth filters
         if self.apply_filters:
-            depth_frame = self.decimation.process(depth_frame)
             depth_frame = self.spatial_filter.process(depth_frame)
             depth_frame = self.temporal_filter.process(depth_frame)
             depth_frame = self.hole_filling.process(depth_frame)
@@ -164,7 +161,7 @@ class RealSenseRecorder:
         """Save frame to disk"""
         filename = f"{self.frame_count:06d}.png"
         
-        # Save RGB (convert BGR to RGB for consistency)
+        # Save RGB (stored as BGR by OpenCV convention)
         rgb_path = self.rgb_dir / filename
         cv2.imwrite(str(rgb_path), color_image)
         
@@ -257,12 +254,6 @@ def main():
         description='Record RGB-D dataset from Intel RealSense D435i'
     )
     parser.add_argument(
-        '--output', '-o',
-        type=str,
-        default='./data/realsense_dataset',
-        help='Output directory for dataset'
-    )
-    parser.add_argument(
         '--duration', '-d',
         type=int,
         default=60,
@@ -274,44 +265,13 @@ def main():
         default=30,
         help='Camera FPS (default: 30)'
     )
-    parser.add_argument(
-        '--save-interval',
-        type=int,
-        default=None,
-        help='Save every N-th frame (default: save all)'
-    )
-    parser.add_argument(
-        '--rgb-res',
-        type=str,
-        default='1280x720',
-        help='RGB resolution WxH (default: 1280x720)'
-    )
-    parser.add_argument(
-        '--depth-res',
-        type=str,
-        default='1280x720',
-        help='Depth resolution WxH (default: 1280x720)'
-    )
-    parser.add_argument(
-        '--no-align',
-        action='store_true',
-        help='Disable depth-to-color alignment'
-    )
-    parser.add_argument(
-        '--no-filter',
-        action='store_true',
-        help='Disable depth filtering'
-    )
     
     args = parser.parse_args()
-    
-    # Parse resolutions
-    rgb_res = tuple(map(int, args.rgb_res.split('x')))
-    depth_res = tuple(map(int, args.depth_res.split('x')))
-    
-    # Add timestamp to output directory
+
+    # Get script directory and create output path
+    script_dir = Path(__file__).parent
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = Path(args.output) / timestamp
+    output_dir = script_dir / 'collected_dataset' / timestamp
     
     print("=" * 60)
     print("RealSense D435i Dataset Collection")
@@ -319,20 +279,20 @@ def main():
     print(f"Output: {output_dir}")
     print(f"Duration: {args.duration} seconds")
     print(f"FPS: {args.fps}")
-    print(f"RGB Resolution: {rgb_res}")
-    print(f"Depth Resolution: {depth_res}")
-    print(f"Align Depth: {not args.no_align}")
-    print(f"Apply Filters: {not args.no_filter}")
+    print(f"RGB Resolution: 1280x720")
+    print(f"Depth Resolution: 1280x720")
+    print(f"Align Depth: True")
+    print(f"Apply Filters: True")
     print("=" * 60)
     
     # Create recorder
     recorder = RealSenseRecorder(
         output_dir=output_dir,
-        rgb_resolution=rgb_res,
-        depth_resolution=depth_res,
+        rgb_resolution=(1280, 720),
+        depth_resolution=(1280, 720),
         fps=args.fps,
-        align_depth=not args.no_align,
-        apply_filters=not args.no_filter
+        align_depth=True,
+        apply_filters=True
     )
     
     try:
@@ -340,7 +300,7 @@ def main():
         recorder.save_intrinsics()
         recorder.record(
             duration_seconds=args.duration,
-            save_interval=args.save_interval
+            save_interval=None
         )
     finally:
         recorder.stop()
