@@ -1,0 +1,28 @@
+# RealDepth - NYU Depth V2 Config
+# ================================
+
+exp_name: nyu_resnet
+exp_dir: ./experiments
+
+# Dataset (auto-downloads from HuggingFace)
+dataset: nyu
+max_depth: 10.0
+image_size: [480, 640]
+
+# Model
+model: realdepth_resnet  # realdepth | realdepth_resnet | realdepth_lite
+
+# Training
+epochs: 50
+batch_size: 8
+lr: 0.0001
+weight_decay: 0.0001
+
+# Loss weights
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+
+# System
+num_workers: 4

@@ -1,0 +1,30 @@
+# RealDepth - RealSense D435i Config
+# ====================================
+
+exp_name: realsense_v1
+exp_dir: ./experiments
+
+# Dataset
+dataset: realsense
+data_dir: ./data/realsense  # Your collected data path
+max_depth: 10.0
+depth_scale: 0.001  # mm to meters
+image_size: [480, 640]
+
+# Model
+model: realdepth_resnet
+
+# Training
+epochs: 100
+batch_size: 8
+lr: 0.0001
+weight_decay: 0.0001
+
+# Loss
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+
+# System
+num_workers: 4

@@ -1,4 +1,11 @@
-pyrealsense2 
-opencv-python 
-numpy
 torch
+torchvision
+numpy
+opencv-python
+datasets
+pillow
+pyyaml
+tqdm
+tensorboard
+pyrealsense2
+matplotlib
