@@ -216,6 +216,28 @@ def test_combined_loss():
         return False
 
 
+def test_mae_metrics():
+    """Test MAE and Median AE metrics"""
+    print("\nTesting MAE and Median AE metrics...")
+
+    # Create known data: predictions [1,2,3,4,5], targets all 1.0
+    # Expected errors: [0,1,2,3,4] → MAE=2.0, Median=2.0
+    pred = torch.tensor([[[[1.0, 2.0, 3.0, 4.0, 5.0]]]])
+    target = torch.tensor([[[[1.0, 1.0, 1.0, 1.0, 1.0]]]])
+
+    metrics = DepthMetrics.compute(pred, target)
+
+    print(f"  MAE: {metrics['mae']:.4f} (expected: 2.0)")
+    print(f"  Median AE: {metrics['mae_median']:.4f} (expected: 2.0)")
+
+    if abs(metrics['mae'] - 2.0) < 0.01 and abs(metrics['mae_median'] - 2.0) < 0.01:
+        print("✓ MAE metrics compute correctly")
+        return True
+    else:
+        print("❌ MAE metrics incorrect")
+        return False
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("COMPREHENSIVE LOSS FUNCTION TESTS")
@@ -230,6 +252,7 @@ if __name__ == "__main__":
         test_berhu_behavior,
         test_metrics,
         test_combined_loss,
+        test_mae_metrics,
     ]
 
     passed = 0
