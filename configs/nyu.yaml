@@ -10,7 +10,7 @@ max_depth: 10.0
 image_size: [480, 640]
 
 # Model
-model: realdepth_resnet  # realdepth | realdepth_resnet | realdepth_lite
+model: realdepth_resnet  # or use 'realdepth'
 
 # Training
 epochs: 50

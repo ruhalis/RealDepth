@@ -8,10 +8,10 @@ from losses import CombinedDepthLoss
 
 def get_model(model_name, max_depth=10.0):
     """
-    Factory function to create model variants
+    Factory function to create model
 
     Args:
-        model_name: str - Model variant ('realdepth_resnet', 'realdepth', 'realdepth_lite')
+        model_name: str - Model name ('realdepth_resnet' or 'realdepth')
         max_depth: float - Maximum depth range in meters
 
     Returns:
@@ -19,10 +19,8 @@ def get_model(model_name, max_depth=10.0):
     """
     if model_name in ['realdepth_resnet', 'realdepth']:
         return DepthEstimationNet(base_channels=64, max_depth=max_depth)
-    elif model_name == 'realdepth_lite':
-        return DepthEstimationNet(base_channels=32, max_depth=max_depth)
     else:
-        raise ValueError(f"Unknown model: {model_name}. Choose from: realdepth_resnet, realdepth, realdepth_lite")
+        raise ValueError(f"Unknown model: {model_name}. Use 'realdepth_resnet' or 'realdepth'")
 
 
 def count_params(model):
