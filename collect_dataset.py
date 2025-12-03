@@ -3,13 +3,18 @@ Intel RealSense D435i Data Collection Script
 Collects linked RGB and Depth frames
 
 Usage:
-    python collect_dataset.py --duration 1200 --fps 30
-    Supports only 6, 15, 30 FPS modes
+    python collect_dataset.py                    # Uses defaults from config
+    python collect_dataset.py --duration 1200    # Override duration
+    python collect_dataset.py --fps 15           # Override FPS (6, 15, or 30)
+
+All settings loaded from configs/realsense.yaml
+Command-line args override config defaults
 """
 import os
 import sys
 import time
 import argparse
+import yaml
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -251,57 +256,69 @@ class RealSenseRecorder:
 
 
 def main():
+    # Load config from configs/realsense.yaml first
+    script_dir = Path(__file__).parent
+    config_path = script_dir / 'configs' / 'realsense.yaml'
+
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+
+    # Get collection settings from config
+    collection_cfg = cfg.get('collection', {})
+    default_duration = collection_cfg.get('duration', 60)
+    default_fps = collection_cfg.get('fps', 30)
+    align_depth = collection_cfg.get('align_depth', True)
+    apply_filters = collection_cfg.get('apply_filters', True)
+    save_interval = collection_cfg.get('save_interval', 1)
+    if save_interval == 1:
+        save_interval = None  # None means save all frames
+
     parser = argparse.ArgumentParser(
         description='Record RGB-D dataset from Intel RealSense D435i'
     )
     parser.add_argument(
         '--duration', '-d',
         type=int,
-        default=60,
-        help='Recording duration in seconds (default: 60)'
+        default=default_duration,
+        help=f'Recording duration in seconds (default: {default_duration} from config)'
     )
     parser.add_argument(
         '--fps',
         type=int,
-        default=30,
-        help='Camera FPS (default: 30)'
+        default=default_fps,
+        help=f'Camera FPS (default: {default_fps} from config)'
     )
-    
+
     args = parser.parse_args()
 
-    # Get script directory and create output path
-    script_dir = Path(__file__).parent
+    # Extract resolution from config [height, width] -> (width, height)
+    height, width = cfg['image_size']
+    resolution = (width, height)
+
+    # Create output path
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_dir = script_dir / 'collected_dataset' / timestamp
-    
+
     print("=" * 60)
     print("RealSense D435i Dataset Collection")
     print("=" * 60)
-    print(f"Output: {output_dir}")
-    print(f"Duration: {args.duration} seconds")
-    print(f"FPS: {args.fps}")
-    print(f"RGB Resolution: 1280x720")
-    print(f"Depth Resolution: 1280x720")
-    print(f"Align Depth: True")
-    print(f"Apply Filters: True")
-    print("=" * 60)
-    
+
     # Create recorder
     recorder = RealSenseRecorder(
         output_dir=output_dir,
-        rgb_resolution=(1280, 720),
-        depth_resolution=(1280, 720),
+        rgb_resolution=resolution,
+        depth_resolution=resolution,
         fps=args.fps,
-        align_depth=True,
-        apply_filters=True
+        align_depth=align_depth,
+        apply_filters=apply_filters
     )
-    
+
     try:
         recorder.start()
         recorder.save_intrinsics()
         recorder.record(
             duration_seconds=args.duration,
-            save_interval=None
+            save_interval=save_interval
         )
     finally:
         recorder.stop()

@@ -1,7 +1,8 @@
 """
-RealDepth Training - python train.py --config configs/nyu.yaml
+RealDepth Training - python train.py
+Config: configs/realsense.yaml (edit to customize settings)
 """
-import os, sys, argparse, time, yaml, numpy as np
+import os, sys, time, yaml, numpy as np
 from pathlib import Path
 from datetime import datetime
 import torch
@@ -12,7 +13,14 @@ from tqdm import tqdm
 
 from model_utils import get_model, count_params, DepthLoss
 from losses import DepthMetrics
-from datasets import create_dataloaders
+from depth_datasets import create_dataloaders
+
+def format_depth_metric(value_meters):
+    """Convert depth metric to human-readable format (cm or m)"""
+    if value_meters < 1.0:
+        return f"{value_meters * 100:.1f} cm"
+    else:
+        return f"{value_meters:.2f} m"
 
 class Trainer:
     def __init__(self, cfg):
@@ -82,6 +90,9 @@ class Trainer:
                 self.writer.add_scalar(f'val/{metric_name}', metric_value, epoch)
 
             print(f"Epoch {epoch+1}: Val Loss={val_loss:.4f}, AbsRel={metrics['abs_rel']:.4f}, δ1={metrics['delta1']:.4f}")
+            print(f"  Absolute Errors: MAE={format_depth_metric(metrics['mae'])}, "
+                  f"Median={format_depth_metric(metrics['mae_median'])}, "
+                  f"RMSE={format_depth_metric(metrics['rmse'])}")
 
             # Save visualizations every 5 epochs
             if (epoch + 1) % 5 == 0:
@@ -135,11 +146,9 @@ class Trainer:
         self.writer.add_image('validation/samples', grid, self.epoch)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', required=True)
-    args = parser.parse_args()
-    
-    with open(args.config) as f:
+    config_path = 'configs/realsense.yaml'
+
+    with open(config_path) as f:
         cfg = yaml.safe_load(f)
     cfg.setdefault('exp_name', datetime.now().strftime('%Y%m%d_%H%M%S'))
     cfg.setdefault('exp_dir', './experiments')
