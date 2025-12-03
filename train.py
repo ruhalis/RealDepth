@@ -124,8 +124,10 @@ class Trainer:
 
         self.model.eval()
         batch = next(iter(self.val_loader))
-        rgb = batch['rgb'][:num_samples].to(self.device)
-        depth_gt = batch['depth'][:num_samples].to(self.device)
+        # Use min to handle cases where batch size < num_samples
+        actual_samples = min(num_samples, batch['rgb'].shape[0])
+        rgb = batch['rgb'][:actual_samples].to(self.device)
+        depth_gt = batch['depth'][:actual_samples].to(self.device)
         depth_pred = self.model(rgb)
 
         # Normalize to 0-1 for visualization
@@ -138,7 +140,7 @@ class Trainer:
 
         # Create grid: RGB | GT | Pred
         vis_samples = []
-        for i in range(num_samples):
+        for i in range(actual_samples):
             vis_samples.extend([rgb[i], depth_gt_rgb[i], depth_pred_rgb[i]])
 
         grid = vutils.make_grid(vis_samples, nrow=3, normalize=True, padding=2)
