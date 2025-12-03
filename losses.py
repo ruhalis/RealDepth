@@ -270,6 +270,7 @@ class DepthMetrics:
         if len(pred) == 0:
             return {
                 'abs_rel': 0, 'sq_rel': 0, 'rmse': 0, 'rmse_log': 0,
+                'mae': 0, 'mae_median': 0,
                 'delta1': 0, 'delta2': 0, 'delta3': 0
             }
         
@@ -284,7 +285,13 @@ class DepthMetrics:
         
         # RMSE log
         rmse_log = torch.sqrt(torch.mean((torch.log(pred) - torch.log(target)) ** 2))
-        
+
+        # Mean Absolute Error
+        mae = torch.mean(torch.abs(pred - target))
+
+        # Median Absolute Error
+        mae_median = torch.median(torch.abs(pred - target))
+
         # Threshold accuracies
         thresh = torch.max(pred / target, target / pred)
         delta1 = (thresh < 1.25).float().mean()
@@ -296,6 +303,8 @@ class DepthMetrics:
             'sq_rel': sq_rel.item(),
             'rmse': rmse.item(),
             'rmse_log': rmse_log.item(),
+            'mae': mae.item(),
+            'mae_median': mae_median.item(),
             'delta1': delta1.item(),
             'delta2': delta2.item(),
             'delta3': delta3.item()
