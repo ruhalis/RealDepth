@@ -79,15 +79,28 @@ class RealSenseDataset(Dataset):
     """
     Custom RealSense dataset loader
 
-    Expected directory structure:
+    Supports two directory structures:
+
+    1. Split structure (preferred, from split_dataset.py):
+        data_dir/
+            train/
+                rgb/
+                    00000.png
+                    ...
+                depth/
+                    00000.png
+                    ...
+            val/
+                rgb/
+                depth/
+
+    2. Flat structure (legacy, auto-splits by ratio):
         data_dir/
             rgb/
                 00000.png
-                00001.png
                 ...
             depth/
                 00000.png
-                00001.png
                 ...
     """
     def __init__(self, data_dir, image_size=(480, 640), max_depth=10.0, depth_scale=0.001, split='train', train_ratio=0.9):
@@ -98,16 +111,26 @@ class RealSenseDataset(Dataset):
             max_depth: Maximum valid depth in meters
             depth_scale: Scale factor to convert depth to meters (default: 0.001 for mm to m)
             split: 'train' or 'val'
-            train_ratio: Ratio of training samples (default: 0.9)
+            train_ratio: Ratio of training samples (default: 0.9, only used if split dirs don't exist)
         """
         self.data_dir = Path(data_dir)
         self.image_size = image_size
         self.max_depth = max_depth
         self.depth_scale = depth_scale
 
-        # Check directories exist
-        rgb_dir = self.data_dir / 'rgb'
-        depth_dir = self.data_dir / 'depth'
+        # Check if split directory structure exists (dataset/train/rgb, dataset/val/rgb)
+        # If so, use it. Otherwise fall back to flat structure with manual splitting
+        split_dir = self.data_dir / split
+        if split_dir.exists() and (split_dir / 'rgb').exists():
+            # Use split directory structure
+            rgb_dir = split_dir / 'rgb'
+            depth_dir = split_dir / 'depth'
+            use_split_dirs = True
+        else:
+            # Use flat directory structure
+            rgb_dir = self.data_dir / 'rgb'
+            depth_dir = self.data_dir / 'depth'
+            use_split_dirs = False
 
         if not rgb_dir.exists():
             raise FileNotFoundError(f"RGB directory not found: {rgb_dir}")
@@ -125,18 +148,19 @@ class RealSenseDataset(Dataset):
         if len(self.rgb_files) != len(self.depth_files):
             raise ValueError(f"Mismatched RGB ({len(self.rgb_files)}) and depth ({len(self.depth_files)}) file counts")
 
-        # Split into train/val
-        num_samples = len(self.rgb_files)
-        num_train = int(num_samples * train_ratio)
+        # Only apply train/val split if using flat structure
+        if not use_split_dirs:
+            num_samples = len(self.rgb_files)
+            num_train = int(num_samples * train_ratio)
 
-        if split == 'train':
-            self.rgb_files = self.rgb_files[:num_train]
-            self.depth_files = self.depth_files[:num_train]
-        else:  # val
-            self.rgb_files = self.rgb_files[num_train:]
-            self.depth_files = self.depth_files[num_train:]
+            if split == 'train':
+                self.rgb_files = self.rgb_files[:num_train]
+                self.depth_files = self.depth_files[:num_train]
+            else:  # val
+                self.rgb_files = self.rgb_files[num_train:]
+                self.depth_files = self.depth_files[num_train:]
 
-        print(f"RealSense {split}: {len(self.rgb_files)} samples from {data_dir}")
+        print(f"RealSense {split}: {len(self.rgb_files)} samples from {rgb_dir}")
 
         # RGB transforms (ImageNet normalization)
         self.rgb_transform = T.Compose([
