@@ -18,7 +18,7 @@ def get_model(model_name, max_depth=10.0):
         model: DepthEstimationNet instance
     """
     if model_name in ['realdepth_resnet', 'realdepth']:
-        return DepthEstimationNet(base_channels=64, max_depth=max_depth)
+        return DepthEstimationNet(base_channels=32, max_depth=max_depth)
     else:
         raise ValueError(f"Unknown model: {model_name}. Use 'realdepth_resnet' or 'realdepth'")
 

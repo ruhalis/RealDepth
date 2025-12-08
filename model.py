@@ -49,9 +49,9 @@ class Encoder(nn.Module):
     Encoder
     1/32 of input resolution
     """
-    def __init__(self, in_channels=3, base_channels=64):
+    def __init__(self, in_channels=3, base_channels=32):
         super().__init__()
-        
+
         self.initial = nn.Sequential(
             ConvBlock(in_channels, base_channels, 7, 1, 3),
             ConvBlock(base_channels, base_channels)
@@ -120,9 +120,9 @@ class Decoder(nn.Module):
     """
     Decoder: Reconstructs depth map from encoder features using skip connections
     """
-    def __init__(self, base_channels=64):
+    def __init__(self, base_channels=32):
         super().__init__()
-        
+
         # decoder blocks
         self.dec4 = DecoderBlock(base_channels * 16, base_channels * 8, base_channels * 8)
         self.dec3 = DecoderBlock(base_channels * 8, base_channels * 4, base_channels * 4)
@@ -150,7 +150,7 @@ class DepthEstimationNet(nn.Module):
     """
     RGB Depth Estimation
     """
-    def __init__(self, in_channels=3, base_channels=64, max_depth=10.0):
+    def __init__(self, in_channels=3, base_channels=32, max_depth=10.0):
         super().__init__()
         self.max_depth = max_depth
         self.encoder = Encoder(in_channels, base_channels)
