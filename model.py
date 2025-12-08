@@ -6,16 +6,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ConvBlock(nn.Module):
-    """Basic convolutional block: Conv -> BatchNorm -> ReLU"""
+class DepthwiseSeparableConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=False)
-        self.bn = nn.BatchNorm2d(out_channels)
+        # Depthwise: spatial filtering (each channel independently)
+        self.depthwise = nn.Conv2d(
+            in_channels, in_channels, 
+            kernel_size, stride, padding,
+            groups=in_channels, 
+            bias=False
+        )
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        
+        # Pointwise: channel mixing (1×1 conv)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
     
     def forward(self, x):
-        return self.relu(self.bn(self.conv(x)))
+        x = self.relu(self.bn1(self.depthwise(x)))
+        x = self.relu(self.bn2(self.pointwise(x)))
+        return x
 
 
 class ResidualBlock(nn.Module):
@@ -53,8 +64,8 @@ class Encoder(nn.Module):
         super().__init__()
 
         self.initial = nn.Sequential(
-            ConvBlock(in_channels, base_channels, 7, 1, 3),
-            ConvBlock(base_channels, base_channels)
+            DepthwiseSeparableConv(in_channels, base_channels, 7, 1, 3),
+            DepthwiseSeparableConv(base_channels, base_channels)
         )
         
         self.enc1 = self._make_layer(base_channels, base_channels * 2, stride=2)      # 1/2
@@ -101,8 +112,8 @@ class DecoderBlock(nn.Module):
         
         # concatenation with skip connection
         self.conv = nn.Sequential(
-            ConvBlock(in_channels // 2 + skip_channels, out_channels),
-            ConvBlock(out_channels, out_channels)
+            DepthwiseSeparableConv(in_channels // 2 + skip_channels, out_channels),
+            DepthwiseSeparableConv(out_channels, out_channels)
         )
     
     def forward(self, x, skip):
@@ -131,7 +142,7 @@ class Decoder(nn.Module):
         
         # final output layer
         self.final = nn.Sequential(
-            ConvBlock(base_channels, base_channels // 2),
+            DepthwiseSeparableConv(base_channels, base_channels // 2),
             nn.Conv2d(base_channels // 2, 1, 3, padding=1),
             nn.Sigmoid()  # Output in [0, 1] range, scale to actual depth later
         )
