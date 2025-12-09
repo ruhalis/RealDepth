@@ -2,20 +2,32 @@
 
 2D camera depth estimation using U-Net architecture. Predict depth maps from RGB images using either NYU Depth V2 dataset or your own RealSense D435i camera data.
 
+## Results
+
+Training visualization showing RGB inputs (left), ground truth depth image (center) and predicted depth maps (right):
+
+![Training Results](assets/epoch99.jpg)
+
 ## Installation
 
+### Option 1: Install as package (recommended)
+```bash
+pip install -e .
+```
+
+### Option 2: Install dependencies only
 ```bash
 pip install -r requirements.txt
 ```
 
-**Note for Mac users**: If you're not collecting data with RealSense camera, comment out `pyrealsense2` in `requirements.txt` (it requires x86 architecture).
+**Note for Mac users**: For RealSense support: `pip install -e .[realsense]`
 
 ## Quick Start
 
 ### Option 1: Train on nyu dataset
 
 ```bash
-python train.py --config configs/nyu.yaml
+python scripts/train.py --config configs/nyu.yaml
 ```
 
 The dataset will auto-download from HuggingFace on first run.
@@ -27,7 +39,7 @@ The dataset will auto-download from HuggingFace on first run.
 **2. Collect data with RealSense D435i:**
 
 ```bash
-python collect_dataset.py --duration 1200 --fps 30
+python scripts/collect_dataset.py --duration 1200 --fps 30
 ```
 
 This creates `collected_dataset/<timestamp>/` with:
@@ -43,7 +55,7 @@ This creates `collected_dataset/<timestamp>/` with:
 **3. Split dataset into train/val/test:**
 
 ```bash
-python split_dataset.py
+python scripts/split_dataset.py
 ```
 
 This organizes data into `dataset/` with 80/10/10 split:
@@ -57,10 +69,10 @@ dataset/
 └── test/
 ```
 
-**3. Train on your data:**
+**4. Train on your data:**
 
 ```bash
-python train.py
+python scripts/train.py
 ```
 
 ## Configuration
@@ -78,15 +90,24 @@ tensorboard --logdir experiments/<exp_name>/logs
 
 ```
 RealDepth/
-├── configs/               # Training configurations
-│   ├── nyu.yaml          # NYU Depth V2 config
-│   └── realsense.yaml    # RealSense config
-├── model.py              # Network architecture
-├── losses.py             # Loss functions & metrics
-├── datasets.py           # Data loaders
-├── train.py              # Training script
-├── collect_dataset.py    # RealSense data collection
-└── split_dataset.py      # Dataset splitting
+├── realdepth/            # Core library package
+│   ├── __init__.py      # Package initialization
+│   ├── model.py         # Network architecture
+│   ├── losses.py        # Loss functions & metrics
+│   ├── depth_datasets.py # Data loaders
+│   └── model_utils.py   # Model utilities
+├── scripts/             # Executable scripts
+│   ├── train.py
+│   ├── collect_dataset.py
+│   ├── split_dataset.py
+│   ├── infer_image.py
+│   └── infer_camera.py
+├── configs/             # Training configurations
+│   ├── nyu.yaml        # NYU Depth V2 config
+│   └── realsense.yaml  # RealSense config
+├── tests/              # Unit tests
+├── setup.py            # Package installation
+└── pyproject.toml      # Modern packaging config
 ```
 
 ## Troubleshooting
@@ -99,10 +120,12 @@ RealDepth/
 
 **Scale issues:** Add more variety to training data
 
+
+
 ## Architecture
 
 U-Net style encoder-decoder with skip connections:
-- **Encoder**: Extracts features at 5 scales (64 → 128 → 256 → 512 → 1024 channels)
+- **Encoder**: Extracts features at 5 scales (32 → 64 → 128 → 256 → 512 channels)
 - **Skip connections**: Preserve spatial details
 - **Decoder**: Reconstructs full-resolution depth map
 
