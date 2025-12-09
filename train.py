@@ -124,12 +124,6 @@ class Trainer:
     def _comprehensive_validate(self):
         """
         Comprehensive validation with depth-stratified metrics.
-
-        Runs after training completes to provide detailed performance breakdown
-        by depth ranges.
-
-        Returns:
-            metrics_dict: Dictionary with overall and stratified metrics
         """
         from losses import format_stratified_metrics
         import json

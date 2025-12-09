@@ -1,15 +1,6 @@
 """
-RealDepth - Comprehensive Model Validation with Depth-Stratified Metrics
-
-Usage:
-    python validate.py --checkpoint <checkpoint.pth> [options]
-
-Example:
-    python validate.py --checkpoint experiments/exp1/checkpoints/best.pth
-    python validate.py -c best.pth --config configs/realsense.yaml --split test
-    python validate.py -c best.pth --thresholds 2.0 4.0 6.0 10.0
+Model Validation with Depth-Stratified Metrics
 """
-
 import sys
 import argparse
 from pathlib import Path
@@ -22,16 +13,9 @@ from model_utils import get_model
 from losses import DepthMetrics, format_stratified_metrics
 from depth_datasets import create_dataloaders, RealSenseDataset, NYUDepthV2Dataset
 
-
 def setup_device(device_arg):
     """
     Select device: cuda/cpu/auto
-
-    Args:
-        device_arg: 'cuda', 'cpu', or 'auto'
-
-    Returns:
-        torch.device
     """
     if device_arg == 'auto':
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -44,19 +28,9 @@ def setup_device(device_arg):
 
     return device
 
-
 def load_checkpoint(checkpoint_path, config_path, device):
     """
     Load model checkpoint and configuration
-
-    Args:
-        checkpoint_path: Path to checkpoint file
-        config_path: Optional path to config file (if None, extract from checkpoint)
-        device: torch.device
-
-    Returns:
-        model: DepthEstimationNet instance
-        config: Configuration dict
     """
     checkpoint_path = Path(checkpoint_path)
     if not checkpoint_path.exists():
@@ -95,13 +69,6 @@ def load_checkpoint(checkpoint_path, config_path, device):
 def create_validation_loader(config, split='val'):
     """
     Create dataloader for validation or test set
-
-    Args:
-        config: Configuration dict
-        split: 'val' or 'test'
-
-    Returns:
-        DataLoader instance
     """
     dataset_type = config.get('dataset', 'realsense')
     batch_size = config.get('batch_size', 4)
@@ -149,16 +116,6 @@ def create_validation_loader(config, split='val'):
 def validate_model(model, loader, device, depth_thresholds):
     """
     Run comprehensive validation with depth-stratified metrics
-
-    Args:
-        model: DepthEstimationNet instance
-        loader: DataLoader
-        device: torch.device
-        depth_thresholds: List of depth thresholds in meters
-
-    Returns:
-        flat_metrics: Dictionary with overall and stratified metrics
-        stratified_results: Nested dictionary with structured results
     """
     print("\nRunning comprehensive validation...")
     print(f"Depth thresholds: {depth_thresholds} meters")
@@ -208,12 +165,6 @@ def validate_model(model, loader, device, depth_thresholds):
 def save_results(flat_metrics, stratified_results, output_dir, checkpoint_path):
     """
     Save validation results to JSON file and print formatted table
-
-    Args:
-        flat_metrics: Flat dictionary with all metrics
-        stratified_results: Nested dictionary with structured results
-        output_dir: Output directory path
-        checkpoint_path: Path to checkpoint (for filename)
     """
     # Print formatted table
     print(format_stratified_metrics(stratified_results))

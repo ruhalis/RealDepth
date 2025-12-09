@@ -245,14 +245,6 @@ class DepthMetrics:
     def compute(pred, target, mask=None):
         """
         Compute all metrics
-        
-        Args:
-            pred: Predicted depth (B, 1, H, W) or (H, W)
-            target: Ground truth depth, same shape as pred
-            mask: Valid pixels mask, optional
-        
-        Returns:
-            Dictionary with all metrics
         """
         pred = pred.flatten()
         target = target.flatten()
@@ -314,23 +306,6 @@ class DepthMetrics:
     def compute_stratified(pred, target, depth_thresholds=[3.0, 5.0, 10.0], mask=None):
         """
         Compute depth-stratified metrics for cumulative depth ranges.
-
-        For each threshold T, computes metrics for all pixels with depth <= T.
-
-        Args:
-            pred: Predicted depth (B, 1, H, W) or (H, W)
-            target: Ground truth depth, same shape as pred
-            depth_thresholds: List of depth thresholds in meters (default: [3.0, 5.0, 10.0])
-            mask: Valid pixels mask, optional
-
-        Returns:
-            Dictionary with structure:
-            {
-                'overall': {...},  # All valid pixels
-                '3m': {...},       # All pixels with depth <= 3m
-                '5m': {...},       # All pixels with depth <= 5m
-                '10m': {...}       # All pixels with depth <= 10m
-            }
         """
         results = {}
 
@@ -391,12 +366,6 @@ def format_depth_metric(value_meters):
 def format_stratified_metrics(metrics_dict):
     """
     Format stratified metrics as a readable table.
-
-    Args:
-        metrics_dict: Dictionary from compute_stratified()
-
-    Returns:
-        Formatted string with table
     """
     output = []
     output.append("\n" + "="*104)
