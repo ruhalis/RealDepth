@@ -309,3 +309,129 @@ class DepthMetrics:
             'delta2': delta2.item(),
             'delta3': delta3.item()
         }
+
+    @staticmethod
+    def compute_stratified(pred, target, depth_thresholds=[3.0, 5.0, 10.0], mask=None):
+        """
+        Compute depth-stratified metrics for cumulative depth ranges.
+
+        For each threshold T, computes metrics for all pixels with depth <= T.
+
+        Args:
+            pred: Predicted depth (B, 1, H, W) or (H, W)
+            target: Ground truth depth, same shape as pred
+            depth_thresholds: List of depth thresholds in meters (default: [3.0, 5.0, 10.0])
+            mask: Valid pixels mask, optional
+
+        Returns:
+            Dictionary with structure:
+            {
+                'overall': {...},  # All valid pixels
+                '3m': {...},       # All pixels with depth <= 3m
+                '5m': {...},       # All pixels with depth <= 5m
+                '10m': {...}       # All pixels with depth <= 10m
+            }
+        """
+        results = {}
+
+        # Compute overall metrics (all valid pixels)
+        results['overall'] = DepthMetrics.compute(pred, target, mask)
+
+        # Flatten for easier mask operations
+        pred_flat = pred.flatten()
+        target_flat = target.flatten()
+
+        # Compute stratified metrics for each depth threshold
+        for threshold in depth_thresholds:
+            # Create depth-stratified mask
+            depth_mask = (target_flat <= threshold) & (target_flat > 0)
+
+            if mask is not None:
+                depth_mask = depth_mask & mask.flatten().bool()
+
+            # Compute metrics for this depth range
+            if depth_mask.sum() > 0:
+                # Get masked values
+                pred_masked = pred_flat[depth_mask]
+                target_masked = target_flat[depth_mask]
+
+                # Compute metrics
+                metrics = DepthMetrics.compute(pred_masked, target_masked)
+                metrics['num_pixels'] = depth_mask.sum().item()
+            else:
+                # No pixels in this range - return zeros
+                metrics = {
+                    'abs_rel': 0.0, 'sq_rel': 0.0, 'rmse': 0.0, 'rmse_log': 0.0,
+                    'mae': 0.0, 'mae_median': 0.0,
+                    'delta1': 0.0, 'delta2': 0.0, 'delta3': 0.0,
+                    'num_pixels': 0
+                }
+
+            # Store with threshold key
+            key = f"{int(threshold)}m"
+            results[key] = metrics
+
+        # Add num_pixels to overall metrics
+        valid_mask = (target_flat > 0) & (pred_flat > 0)
+        if mask is not None:
+            valid_mask = valid_mask & mask.flatten().bool()
+        results['overall']['num_pixels'] = valid_mask.sum().item()
+
+        return results
+
+
+def format_depth_metric(value_meters):
+    """Convert depth metric to human-readable format (cm or m)"""
+    if value_meters < 1.0:
+        return f"{value_meters * 100:.1f} cm"
+    else:
+        return f"{value_meters:.2f} m"
+
+
+def format_stratified_metrics(metrics_dict):
+    """
+    Format stratified metrics as a readable table.
+
+    Args:
+        metrics_dict: Dictionary from compute_stratified()
+
+    Returns:
+        Formatted string with table
+    """
+    output = []
+    output.append("\n" + "="*104)
+    output.append("DEPTH-STRATIFIED VALIDATION METRICS")
+    output.append("="*104)
+
+    # Header
+    header = f"{'Range':<12} {'#Pixels':<12} {'AbsRel':<10} {'RMSE':<12} {'MAE':<12} {'δ1':<8} {'δ2':<8} {'δ3':<8}"
+    output.append(header)
+    output.append("-"*104)
+
+    # Overall row
+    overall = metrics_dict['overall']
+    num_pixels = overall.get('num_pixels', 'N/A')
+    if num_pixels != 'N/A':
+        num_pixels = f"{num_pixels:,}"
+    row = (f"{'Overall':<12} {num_pixels:<12} {overall['abs_rel']:<10.4f} "
+           f"{format_depth_metric(overall['rmse']):<12} {format_depth_metric(overall['mae']):<12} "
+           f"{overall['delta1']:<8.4f} {overall['delta2']:<8.4f} {overall['delta3']:<8.4f}")
+    output.append(row)
+
+    # Stratified rows
+    for depth_range in ['3m', '5m', '10m']:
+        if depth_range in metrics_dict:
+            m = metrics_dict[depth_range]
+            num_pixels_str = f"{m['num_pixels']:,}"
+            row = (f"{'≤ ' + depth_range:<12} {num_pixels_str:<12} {m['abs_rel']:<10.4f} "
+                   f"{format_depth_metric(m['rmse']):<12} {format_depth_metric(m['mae']):<12} "
+                   f"{m['delta1']:<8.4f} {m['delta2']:<8.4f} {m['delta3']:<8.4f}")
+
+            # Add warning if no pixels in range
+            if m['num_pixels'] == 0:
+                row += " [WARNING: No pixels in this range]"
+
+            output.append(row)
+
+    output.append("="*104)
+    return "\n".join(output)

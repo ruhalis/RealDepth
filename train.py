@@ -101,10 +101,13 @@ class Trainer:
             # Save
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
-                torch.save({'model': self.model.state_dict(), 'config': self.cfg}, 
+                torch.save({'model': self.model.state_dict(), 'config': self.cfg},
                           self.ckpt_dir / 'best.pth')
-        
+
         print(f"\nDone! Best model: {self.ckpt_dir / 'best.pth'}")
+
+        # Run comprehensive validation with depth-stratified metrics
+        self._comprehensive_validate()
     
     @torch.no_grad()
     def _validate(self):
@@ -116,6 +119,88 @@ class Trainer:
             losses.append(loss.item())
             all_metrics.append(DepthMetrics.compute(pred, batch['depth'].to(self.device)))
         return np.mean(losses), {k: np.mean([m[k] for m in all_metrics]) for k in all_metrics[0]}
+
+    @torch.no_grad()
+    def _comprehensive_validate(self):
+        """
+        Comprehensive validation with depth-stratified metrics.
+
+        Runs after training completes to provide detailed performance breakdown
+        by depth ranges.
+
+        Returns:
+            metrics_dict: Dictionary with overall and stratified metrics
+        """
+        from losses import format_stratified_metrics
+        import json
+
+        print("\n" + "="*80)
+        print("RUNNING COMPREHENSIVE VALIDATION WITH DEPTH-STRATIFIED METRICS")
+        print("="*80)
+
+        # Load best checkpoint
+        best_checkpoint = self.ckpt_dir / 'best.pth'
+        if best_checkpoint.exists():
+            print(f"Loading best checkpoint: {best_checkpoint}")
+            checkpoint = torch.load(best_checkpoint, map_location=self.device)
+            self.model.load_state_dict(checkpoint['model'])
+        else:
+            print("Warning: No best checkpoint found. Using current model state.")
+
+        self.model.eval()
+
+        print("Evaluating on VALIDATION set")
+        print(f"Total batches: {len(self.val_loader)}")
+
+        # Accumulate predictions across all batches
+        all_preds = []
+        all_targets = []
+        all_masks = []
+
+        for batch in tqdm(self.val_loader, desc="Computing metrics"):
+            pred = self.model(batch['rgb'].to(self.device))
+            all_preds.append(pred)
+            all_targets.append(batch['depth'].to(self.device))
+            all_masks.append(batch['mask'].to(self.device))
+
+        # Concatenate all batches
+        pred = torch.cat(all_preds, dim=0)
+        target = torch.cat(all_targets, dim=0)
+        mask = torch.cat(all_masks, dim=0)
+
+        # Compute stratified metrics
+        depth_thresholds = [3.0, 5.0, 10.0]
+        stratified_results = DepthMetrics.compute_stratified(
+            pred, target, depth_thresholds, mask
+        )
+
+        # Flatten the nested dict for easy access
+        flat_metrics = {}
+
+        # Overall metrics (no suffix)
+        for k, v in stratified_results['overall'].items():
+            flat_metrics[k] = v
+
+        # Stratified metrics (with suffix)
+        for depth_key in ['3m', '5m', '10m']:
+            if depth_key in stratified_results:
+                for metric_name, metric_value in stratified_results[depth_key].items():
+                    flat_metrics[f"{metric_name}_{depth_key}"] = metric_value
+
+        # Print formatted table
+        print(format_stratified_metrics(stratified_results))
+
+        # Save to JSON
+        results_path = self.exp_dir / 'stratified_validation_results.json'
+        with open(results_path, 'w') as f:
+            json.dump(flat_metrics, f, indent=2)
+        print(f"\nResults saved to: {results_path}")
+
+        # Log to TensorBoard
+        for metric_name, metric_value in flat_metrics.items():
+            self.writer.add_scalar(f'comprehensive_val/{metric_name}', metric_value, self.epoch)
+
+        return flat_metrics
 
     @torch.no_grad()
     def _save_visualizations(self, num_samples=4):
