@@ -197,19 +197,25 @@ def test_combined_loss():
     pred = torch.rand(2, 1, 64, 64) * 10
     target = torch.rand(2, 1, 64, 64) * 10
 
-    combined = CombinedDepthLoss(w_l1=1.0, w_si=0.5, w_grad=0.5, w_ssim=0.1)
+    combined = CombinedDepthLoss(w_l1=1.0, w_si=0.5, w_grad=0.5, w_ssim=0.1, w_berhu=0.1)
     total, losses = combined(pred, target)
+
+    # Check that BerHu loss is included
+    if 'berhu' not in losses:
+        print("❌ BerHu loss not included in combined loss")
+        return False
 
     # Check that total is sum of weighted components
     expected_total = (
         losses['l1'] * 1.0 +
         losses['scale_inv'] * 0.5 +
         losses['gradient'] * 0.5 +
-        losses['ssim'] * 0.1
+        losses['ssim'] * 0.1 +
+        losses['berhu'] * 0.1
     )
 
     if torch.allclose(total, expected_total):
-        print(f"✓ Combined loss correctly weighted: {total:.4f}")
+        print(f"✓ Combined loss correctly weighted (including BerHu): {total:.4f}")
         return True
     else:
         print(f"❌ Combined loss weighting incorrect: {total:.4f} != {expected_total:.4f}")
