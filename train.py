@@ -12,15 +12,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from model_utils import get_model, count_params, DepthLoss
-from losses import DepthMetrics
+from losses import DepthMetrics, format_depth_metric
 from depth_datasets import create_dataloaders
-
-def format_depth_metric(value_meters):
-    """Convert depth metric to human-readable format (cm or m)"""
-    if value_meters < 1.0:
-        return f"{value_meters * 100:.1f} cm"
-    else:
-        return f"{value_meters:.2f} m"
 
 class Trainer:
     def __init__(self, cfg):
@@ -43,7 +36,8 @@ class Trainer:
             w_l1=cfg.get('w_l1', 1.0),
             w_si=cfg.get('w_si', 0.5),
             w_grad=cfg.get('w_grad', 0.5),
-            w_ssim=cfg.get('w_ssim', 0.1)
+            w_ssim=cfg.get('w_ssim', 0.1),
+            w_berhu=cfg.get('w_berhu', 0.1)
         ).to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=cfg['lr'])
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, cfg['epochs'])
