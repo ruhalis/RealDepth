@@ -119,7 +119,8 @@ class Trainer:
         """
         Comprehensive validation with depth-stratified metrics.
         """
-        from losses import format_stratified_metrics
+        from realdepth.validation import run_comprehensive_validation
+        from realdepth.losses import format_stratified_metrics
         import json
 
         print("\n" + "="*80)
@@ -135,45 +136,14 @@ class Trainer:
         else:
             print("Warning: No best checkpoint found. Using current model state.")
 
-        self.model.eval()
-
         print("Evaluating on VALIDATION set")
         print(f"Total batches: {len(self.val_loader)}")
 
-        # Accumulate predictions across all batches
-        all_preds = []
-        all_targets = []
-        all_masks = []
-
-        for batch in tqdm(self.val_loader, desc="Computing metrics"):
-            pred = self.model(batch['rgb'].to(self.device))
-            all_preds.append(pred)
-            all_targets.append(batch['depth'].to(self.device))
-            all_masks.append(batch['mask'].to(self.device))
-
-        # Concatenate all batches
-        pred = torch.cat(all_preds, dim=0)
-        target = torch.cat(all_targets, dim=0)
-        mask = torch.cat(all_masks, dim=0)
-
-        # Compute stratified metrics
+        # Run comprehensive validation using shared function
         depth_thresholds = [3.0, 5.0, 10.0]
-        stratified_results = DepthMetrics.compute_stratified(
-            pred, target, depth_thresholds, mask
+        flat_metrics, stratified_results = run_comprehensive_validation(
+            self.model, self.val_loader, self.device, depth_thresholds
         )
-
-        # Flatten the nested dict for easy access
-        flat_metrics = {}
-
-        # Overall metrics (no suffix)
-        for k, v in stratified_results['overall'].items():
-            flat_metrics[k] = v
-
-        # Stratified metrics (with suffix)
-        for depth_key in ['3m', '5m', '10m']:
-            if depth_key in stratified_results:
-                for metric_name, metric_value in stratified_results[depth_key].items():
-                    flat_metrics[f"{metric_name}_{depth_key}"] = metric_value
 
         # Print formatted table
         print(format_stratified_metrics(stratified_results))
