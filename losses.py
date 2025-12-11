@@ -181,20 +181,18 @@ class CombinedDepthLoss(nn.Module):
         w_si=0.5,
         w_grad=0.5,
         w_ssim=0.1,
-        use_berhu=False
+        w_berhu=0.1
     ):
         super().__init__()
-        
+
         self.w_l1 = w_l1
         self.w_si = w_si
         self.w_grad = w_grad
         self.w_ssim = w_ssim
-        
-        if use_berhu:
-            self.l1_loss = BerHuLoss()
-        else:
-            self.l1_loss = L1Loss()
-        
+        self.w_berhu = w_berhu
+
+        self.l1_loss = L1Loss()
+        self.berhu_loss = BerHuLoss()
         self.si_loss = ScaleInvariantLoss()
         self.grad_loss = GradientLoss()
         self.ssim_loss = SSIMLoss()
@@ -228,7 +226,11 @@ class CombinedDepthLoss(nn.Module):
         if self.w_ssim > 0:
             losses['ssim'] = self.ssim_loss(pred, target, mask)
             total += self.w_ssim * losses['ssim']
-        
+
+        if self.w_berhu > 0:
+            losses['berhu'] = self.berhu_loss(pred, target, mask)
+            total += self.w_berhu * losses['berhu']
+
         losses['total'] = total
         
         return total, losses
