@@ -13,9 +13,7 @@ class RealSenseDataset(Dataset):
     """
     Custom RealSense dataset loader
 
-    Supports two directory structures:
-
-    1. Split structure (preferred, from split_dataset.py):
+    Expected directory structure (from split_dataset.py):
         data_dir/
             train/
                 rgb/
@@ -27,45 +25,34 @@ class RealSenseDataset(Dataset):
             val/
                 rgb/
                 depth/
-
-    2. Flat structure (legacy, auto-splits by ratio):
-        data_dir/
-            rgb/
-                00000.png
-                ...
-            depth/
-                00000.png
-                ...
+            test/
+                rgb/
+                depth/
     """
-    def __init__(self, data_dir, image_size=(480, 640), max_depth=10.0, depth_scale=0.001, split='train', train_ratio=0.9):
+    def __init__(self, data_dir, image_size=(480, 640), max_depth=10.0, depth_scale=0.001, split='train'):
         """
         Args:
             data_dir: Path to dataset directory
             image_size: (height, width) tuple
             max_depth: Maximum valid depth in meters
             depth_scale: Scale factor to convert depth to meters (default: 0.001 for mm to m)
-            split: 'train' or 'val'
-            train_ratio: Ratio of training samples (default: 0.9, only used if split dirs don't exist)
+            split: 'train', 'val', or 'test'
         """
         self.data_dir = Path(data_dir)
         self.image_size = image_size
         self.max_depth = max_depth
         self.depth_scale = depth_scale
 
-        # Check if split directory structure exists (dataset/train/rgb, dataset/val/rgb)
-        # If so, use it. Otherwise fall back to flat structure with manual splitting
+        # Load from split directory structure
         split_dir = self.data_dir / split
-        if split_dir.exists() and (split_dir / 'rgb').exists():
-            # Use split directory structure
-            rgb_dir = split_dir / 'rgb'
-            depth_dir = split_dir / 'depth'
-            use_split_dirs = True
-        else:
-            # Use flat directory structure
-            rgb_dir = self.data_dir / 'rgb'
-            depth_dir = self.data_dir / 'depth'
-            use_split_dirs = False
+        rgb_dir = split_dir / 'rgb'
+        depth_dir = split_dir / 'depth'
 
+        if not split_dir.exists():
+            raise FileNotFoundError(
+                f"Split directory not found: {split_dir}\n"
+                f"Please use split_dataset.py to organize your data into train/val/test splits."
+            )
         if not rgb_dir.exists():
             raise FileNotFoundError(f"RGB directory not found: {rgb_dir}")
         if not depth_dir.exists():
@@ -81,18 +68,6 @@ class RealSenseDataset(Dataset):
             raise ValueError(f"No depth images found in {depth_dir}")
         if len(self.rgb_files) != len(self.depth_files):
             raise ValueError(f"Mismatched RGB ({len(self.rgb_files)}) and depth ({len(self.depth_files)}) file counts")
-
-        # Only apply train/val split if using flat structure
-        if not use_split_dirs:
-            num_samples = len(self.rgb_files)
-            num_train = int(num_samples * train_ratio)
-
-            if split == 'train':
-                self.rgb_files = self.rgb_files[:num_train]
-                self.depth_files = self.depth_files[:num_train]
-            else:  # val
-                self.rgb_files = self.rgb_files[num_train:]
-                self.depth_files = self.depth_files[num_train:]
 
         print(f"RealSense {split}: {len(self.rgb_files)} samples from {rgb_dir}")
 
@@ -158,10 +133,6 @@ def create_dataloaders(cfg):
     # Validate required config
     if 'data_dir' not in cfg:
         raise ValueError("Config must contain 'data_dir' for RealSense dataset")
-
-    # Optional warning for old configs
-    if 'dataset' in cfg and cfg['dataset'] != 'realsense':
-        print(f"Warning: dataset type '{cfg['dataset']}' is no longer supported. Using RealSense dataset.")
 
     # Extract parameters
     data_dir = cfg['data_dir']
