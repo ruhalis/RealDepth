@@ -2,7 +2,7 @@
 Comprehensive tests for losses.py
 """
 import torch
-from losses import (
+from realdepth.losses import (
     L1Loss, ScaleInvariantLoss, GradientLoss, SSIMLoss,
     BerHuLoss, CombinedDepthLoss, DepthMetrics
 )

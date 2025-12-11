@@ -18,7 +18,7 @@ import torch
 import torchvision.transforms as T
 from PIL import Image
 
-from model_utils import get_model
+from realdepth.model_utils import get_model
 
 
 def setup_device(device_arg):

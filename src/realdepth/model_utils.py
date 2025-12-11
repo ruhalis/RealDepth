@@ -2,8 +2,8 @@
 Model utility functions for RealDepth training
 """
 
-from model import DepthEstimationNet
-from losses import CombinedDepthLoss
+from .model import DepthEstimationNet
+from .losses import CombinedDepthLoss
 
 
 def get_model(model_name, max_depth=10.0):

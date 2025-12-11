@@ -11,9 +11,9 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from model_utils import get_model, count_params, DepthLoss
-from losses import DepthMetrics, format_depth_metric
-from depth_datasets import create_dataloaders
+from realdepth.model_utils import get_model, count_params, DepthLoss
+from realdepth.losses import DepthMetrics, format_depth_metric
+from realdepth.depth_datasets import create_dataloaders
 
 class Trainer:
     def __init__(self, cfg):

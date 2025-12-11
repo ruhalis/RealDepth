@@ -28,7 +28,7 @@ import torchvision.transforms as T
 from PIL import Image
 import pyrealsense2 as rs
 
-from model_utils import get_model
+from realdepth.model_utils import get_model
 
 
 class RealSenseCamera:

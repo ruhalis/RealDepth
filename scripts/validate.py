@@ -9,9 +9,9 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from model_utils import get_model
-from losses import DepthMetrics, format_stratified_metrics
-from depth_datasets import create_dataloaders, RealSenseDataset
+from realdepth.model_utils import get_model
+from realdepth.losses import DepthMetrics, format_stratified_metrics
+from realdepth.depth_datasets import create_dataloaders, RealSenseDataset
 
 def setup_device(device_arg):
     """
