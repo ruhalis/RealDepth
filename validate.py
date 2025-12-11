@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from model_utils import get_model
 from losses import DepthMetrics, format_stratified_metrics
-from depth_datasets import create_dataloaders, RealSenseDataset, NYUDepthV2Dataset
+from depth_datasets import create_dataloaders, RealSenseDataset
 
 def setup_device(device_arg):
     """
@@ -68,36 +68,34 @@ def load_checkpoint(checkpoint_path, config_path, device):
 
 def create_validation_loader(config, split='val'):
     """
-    Create dataloader for validation or test set
+    Create dataloader for RealSense validation or test set
+
+    Args:
+        config: Configuration dict with 'data_dir', 'image_size', 'max_depth', etc.
+        split: Dataset split ('val' or 'test')
+
+    Returns:
+        DataLoader for specified split
     """
-    dataset_type = config.get('dataset', 'realsense')
     batch_size = config.get('batch_size', 4)
     num_workers = config.get('num_workers', 4)
 
-    print(f"\nCreating {split} dataloader for {dataset_type} dataset")
+    print(f"\nCreating {split} dataloader for RealSense dataset")
 
-    if dataset_type == 'nyu':
-        # NYU Depth V2 dataset
-        dataset = NYUDepthV2Dataset(
-            image_size=tuple(config['image_size']),
-            max_depth=config['max_depth'],
-            split=split
-        )
-    elif dataset_type == 'realsense':
-        # RealSense dataset
-        if 'data_dir' not in config:
-            raise ValueError("Config must contain 'data_dir' for RealSense dataset")
+    # Validate required config
+    if 'data_dir' not in config:
+        raise ValueError("Config must contain 'data_dir' for RealSense dataset")
 
-        dataset = RealSenseDataset(
-            data_dir=config['data_dir'],
-            image_size=tuple(config['image_size']),
-            max_depth=config['max_depth'],
-            depth_scale=config.get('depth_scale', 0.001),
-            split=split
-        )
-    else:
-        raise ValueError(f"Unknown dataset type: {dataset_type}")
+    # Create RealSense dataset
+    dataset = RealSenseDataset(
+        data_dir=config['data_dir'],
+        image_size=tuple(config['image_size']),
+        max_depth=config['max_depth'],
+        depth_scale=config.get('depth_scale', 0.001),
+        split=split
+    )
 
+    # Create DataLoader
     loader = DataLoader(
         dataset,
         batch_size=batch_size,

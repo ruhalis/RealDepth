@@ -1,6 +1,6 @@
 # RealDepth
 
-2D camera depth estimation using U-Net architecture. Predict depth maps from RGB images using either NYU Depth V2 dataset or your own RealSense D435i camera data.
+2D camera depth estimation using U-Net architecture. Predict depth maps from RGB images using RealSense D435i camera data.
 
 ## Results
 
@@ -24,15 +24,7 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### Option 1: Train on nyu dataset
-
-```bash
-python scripts/train.py --config configs/nyu.yaml
-```
-
-The dataset will auto-download from HuggingFace on first run.
-
-### Option 2: Collect Your Own Dataset
+### Collect Your Own Dataset
 
 **1. Calibrate your camera**
 
@@ -103,7 +95,6 @@ RealDepth/
 │   ├── infer_image.py
 │   └── infer_camera.py
 ├── configs/             # Training configurations
-│   ├── nyu.yaml        # NYU Depth V2 config
 │   └── realsense.yaml  # RealSense config
 ├── tests/              # Unit tests
 ├── setup.py            # Package installation

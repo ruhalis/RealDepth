@@ -1,6 +1,5 @@
 """
-Dataset loaders for RealDepth training
-Supports: NYU Depth V2 (HuggingFace), RealSense custom data
+Dataset loader for RealDepth training with RealSense D435i camera data
 """
 
 import torch
@@ -9,71 +8,6 @@ from PIL import Image
 import numpy as np
 from pathlib import Path
 import torchvision.transforms as T
-from datasets import load_dataset
-
-
-class NYUDepthV2Dataset(Dataset):
-    """
-    NYU Depth V2 dataset from HuggingFace
-    """
-    def __init__(self, split='train', image_size=(480, 640), max_depth=10.0):
-        """
-        Args:
-            split: 'train' or 'test'
-            image_size: (height, width) tuple
-            max_depth: Maximum valid depth in meters
-        """
-        self.split = split
-        self.image_size = image_size
-        self.max_depth = max_depth
-
-        # Load from HuggingFace
-        print(f"Loading NYU Depth V2 {split} split from HuggingFace...")
-        self.dataset = load_dataset('sayakpaul/nyu_depth_v2', split=split)
-        print(f"Loaded {len(self.dataset)} samples")
-
-        # RGB transforms (ImageNet normalization)
-        self.rgb_transform = T.Compose([
-            T.Resize(image_size),
-            T.ToTensor(),
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-
-        # Depth transforms
-        self.depth_transform = T.Compose([
-            T.Resize(image_size),
-            T.ToTensor()
-        ])
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        sample = self.dataset[idx]
-
-        # Load images
-        rgb = sample['image'].convert('RGB')
-        depth = sample['depth'].convert('L')  # Grayscale
-
-        # Apply transforms
-        rgb = self.rgb_transform(rgb)
-        depth = self.depth_transform(depth)
-
-        # NYU depth is stored in millimeters, convert to meters
-        depth = depth.float() / 1000.0
-
-        # Clamp to max_depth
-        depth = torch.clamp(depth, 0, self.max_depth)
-
-        # Create valid mask
-        mask = ((depth > 0) & (depth <= self.max_depth)).float()
-
-        return {
-            'rgb': rgb,
-            'depth': depth,
-            'mask': mask
-        }
-
 
 class RealSenseDataset(Dataset):
     """
@@ -207,65 +141,51 @@ class RealSenseDataset(Dataset):
 
 def create_dataloaders(cfg):
     """
-    Factory function to create train and validation dataloaders
+    Factory function to create train and validation dataloaders for RealSense dataset
 
     Args:
         cfg: Configuration dictionary with keys:
-            - dataset: 'nyu' or 'realsense'
-            - data_dir: Path to data (required for realsense)
+            - data_dir: Path to RealSense dataset
             - batch_size: Batch size
             - image_size: [height, width]
             - max_depth: Maximum depth in meters
             - num_workers: Number of data loading workers
-            - depth_scale: Depth scale factor (optional, for realsense, default: 0.001)
+            - depth_scale: Depth scale factor (optional, default: 0.001)
 
     Returns:
         (train_loader, val_loader): Tuple of DataLoader objects
     """
-    dataset_type = cfg['dataset']
+    # Validate required config
+    if 'data_dir' not in cfg:
+        raise ValueError("Config must contain 'data_dir' for RealSense dataset")
+
+    # Optional warning for old configs
+    if 'dataset' in cfg and cfg['dataset'] != 'realsense':
+        print(f"Warning: dataset type '{cfg['dataset']}' is no longer supported. Using RealSense dataset.")
+
+    # Extract parameters
+    data_dir = cfg['data_dir']
     batch_size = cfg['batch_size']
     image_size = tuple(cfg['image_size'])
     max_depth = cfg['max_depth']
     num_workers = cfg.get('num_workers', 4)
+    depth_scale = cfg.get('depth_scale', 0.001)
 
-    if dataset_type == 'nyu':
-        # NYU Depth V2 from HuggingFace
-        train_dataset = NYUDepthV2Dataset(
-            split='train',
-            image_size=image_size,
-            max_depth=max_depth
-        )
-        val_dataset = NYUDepthV2Dataset(
-            split='test',
-            image_size=image_size,
-            max_depth=max_depth
-        )
-
-    elif dataset_type == 'realsense':
-        # Custom RealSense data
-        if 'data_dir' not in cfg:
-            raise ValueError("'data_dir' must be specified in config for realsense dataset")
-
-        data_dir = cfg['data_dir']
-        depth_scale = cfg.get('depth_scale', 0.001)
-
-        train_dataset = RealSenseDataset(
-            data_dir=data_dir,
-            image_size=image_size,
-            max_depth=max_depth,
-            depth_scale=depth_scale,
-            split='train'
-        )
-        val_dataset = RealSenseDataset(
-            data_dir=data_dir,
-            image_size=image_size,
-            max_depth=max_depth,
-            depth_scale=depth_scale,
-            split='val'
-        )
-
-    else:
-        raise ValueError(f"Unknown dataset type: {dataset_type}. Choose 'nyu' or 'realsense'")
+    # Create datasets
+    train_dataset = RealSenseDataset(
+        data_dir=data_dir,
+        image_size=image_size,
+        max_depth=max_depth,
+        depth_scale=depth_scale,
+        split='train'
+    )
+    val_dataset = RealSenseDataset(
+        data_dir=data_dir,
+        image_size=image_size,
+        max_depth=max_depth,
+        depth_scale=depth_scale,
+        split='val'
+    )
 
     # Create dataloaders
     pin_memory = torch.cuda.is_available()
