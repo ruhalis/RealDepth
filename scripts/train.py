@@ -48,6 +48,10 @@ class Trainer:
         # Logging
         self.writer = SummaryWriter(self.exp_dir / 'logs')
         self.epoch, self.best_loss, self.step = 0, float('inf'), 0
+
+        # Loss history for plotting
+        self.train_losses = []  # (step, loss) tuples
+        self.val_losses = []    # (epoch, loss) tuples
     
     def train(self):
         for epoch in range(self.cfg['epochs']):
@@ -61,7 +65,7 @@ class Trainer:
                 mask = batch['mask'].to(self.device)
                 
                 pred = self.model(rgb)
-                loss, _ = self.criterion(pred, depth, mask)
+                loss, loss_dict = self.criterion(pred, depth, mask)
                 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -73,9 +77,12 @@ class Trainer:
                 if self.step % 10 == 0:
                     self.writer.add_scalar('train/loss', loss.item(), self.step)
                     self.writer.add_scalar('train/lr', self.optimizer.param_groups[0]['lr'], self.step)
+                    # Store training loss for plotting
+                    self.train_losses.append((self.step, loss.item()))
             
             # Validate
             val_loss, metrics = self._validate()
+            self.val_losses.append((epoch, val_loss))
             self.scheduler.step()
 
             # Log validation metrics
@@ -99,6 +106,9 @@ class Trainer:
                           self.ckpt_dir / 'best.pth')
 
         print(f"\nDone! Best model: {self.ckpt_dir / 'best.pth'}")
+
+        # Save training loss plot
+        self._save_loss_plots()
 
         # Run comprehensive validation with depth-stratified metrics
         self._comprehensive_validate()
@@ -189,6 +199,49 @@ class Trainer:
         grid = vutils.make_grid(vis_samples, nrow=3, normalize=True, padding=2)
         vutils.save_image(grid, self.vis_dir / f'epoch_{self.epoch:03d}.png')
         self.writer.add_image('validation/samples', grid, self.epoch)
+
+    @torch.no_grad()
+    def _save_loss_plots(self):
+        """Save training and validation loss plots"""
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Plot training loss (raw + smoothed)
+        if self.train_losses:
+            train_steps, train_vals = zip(*self.train_losses)
+            ax.plot(train_steps, train_vals, 'b-', alpha=0.3, linewidth=0.5, label='Train Loss (raw)')
+
+            # Smooth with moving average (window=100)
+            if len(train_vals) > 100:
+                window = 100
+                smoothed = np.convolve(train_vals, np.ones(window)/window, mode='valid')
+                smooth_steps = train_steps[window-1:]
+                ax.plot(smooth_steps, smoothed, 'b-', linewidth=2, label='Train Loss (smoothed)')
+
+        # Plot validation loss
+        if self.val_losses:
+            val_epochs, val_vals = zip(*self.val_losses)
+            # Convert epochs to steps for alignment
+            steps_per_epoch = len(self.train_loader)
+            val_steps = [e * steps_per_epoch for e in val_epochs]
+            ax.plot(val_steps, val_vals, 'r-', linewidth=2, marker='o', markersize=5, label='Val Loss')
+
+        ax.set_xlabel('Training Steps', fontsize=12)
+        ax.set_ylabel('Loss', fontsize=12)
+        ax.set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        # Save
+        plot_path = self.vis_dir / 'training_loss.png'
+        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"\nTraining loss plot saved to: {plot_path}")
 
 if __name__ == "__main__":
     config_path = 'configs/realsense.yaml'
