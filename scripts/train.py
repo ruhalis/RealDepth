@@ -52,6 +52,13 @@ class Trainer:
         # Loss history for plotting
         self.train_losses = []  # (step, loss) tuples
         self.val_losses = []    # (epoch, loss) tuples
+        self.train_loss_components = {  # Track individual components
+            'l1': [],
+            'scale_inv': [],
+            'gradient': [],
+            'ssim': [],
+            'berhu': []
+        }
     
     def train(self):
         for epoch in range(self.cfg['epochs']):
@@ -79,6 +86,14 @@ class Trainer:
                     self.writer.add_scalar('train/lr', self.optimizer.param_groups[0]['lr'], self.step)
                     # Store training loss for plotting
                     self.train_losses.append((self.step, loss.item()))
+
+                    # Log individual loss components
+                    for component_name, component_value in loss_dict.items():
+                        if component_name != 'total':  # Skip total since we already log it
+                            self.writer.add_scalar(f'train/loss_{component_name}', component_value.item(), self.step)
+                            # Store for plotting
+                            if component_name in self.train_loss_components:
+                                self.train_loss_components[component_name].append((self.step, component_value.item()))
             
             # Validate
             val_loss, metrics = self._validate()
@@ -109,6 +124,9 @@ class Trainer:
 
         # Save training loss plot
         self._save_loss_plots()
+
+        # Save loss components plot
+        self._save_component_plots()
 
         # Run comprehensive validation with depth-stratified metrics
         self._comprehensive_validate()
@@ -242,6 +260,55 @@ class Trainer:
         plt.close()
 
         print(f"\nTraining loss plot saved to: {plot_path}")
+
+    @torch.no_grad()
+    def _save_component_plots(self):
+        """Save individual loss component plots"""
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        import matplotlib.pyplot as plt
+
+        # Create subplot for each component
+        components_to_plot = [k for k, v in self.train_loss_components.items() if v]
+        if not components_to_plot:
+            return  # No components to plot
+
+        n_components = len(components_to_plot)
+        fig, axes = plt.subplots(n_components, 1, figsize=(12, 4 * n_components), squeeze=False)
+        axes = axes.flatten()
+
+        for idx, component_name in enumerate(components_to_plot):
+            data = self.train_loss_components[component_name]
+            if not data:
+                continue
+
+            steps, values = zip(*data)
+            ax = axes[idx]
+
+            # Plot raw values
+            ax.plot(steps, values, alpha=0.3, linewidth=0.5, label=f'{component_name} (raw)')
+
+            # Add smoothed line if enough data
+            if len(values) > 100:
+                window = 100
+                smoothed = np.convolve(values, np.ones(window)/window, mode='valid')
+                smooth_steps = steps[window-1:]
+                ax.plot(smooth_steps, smoothed, linewidth=2, label=f'{component_name} (smoothed)')
+
+            ax.set_xlabel('Training Steps', fontsize=10)
+            ax.set_ylabel('Loss Value', fontsize=10)
+            ax.set_title(f'{component_name.replace("_", " ").title()} Loss', fontsize=12, fontweight='bold')
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        # Save
+        plot_path = self.vis_dir / 'loss_components.png'
+        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"Loss components plot saved to: {plot_path}")
 
 if __name__ == "__main__":
     config_path = 'configs/realsense.yaml'
