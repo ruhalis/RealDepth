@@ -225,19 +225,19 @@ class Trainer:
         matplotlib.use('Agg')  # Non-interactive backend
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(14, 7))
 
         # Plot training loss (raw + smoothed)
         if self.train_losses:
             train_steps, train_vals = zip(*self.train_losses)
-            ax.plot(train_steps, train_vals, 'b-', alpha=0.3, linewidth=0.5, label='Train Loss (raw)')
+            ax.plot(train_steps, train_vals, color='lightblue', alpha=0.3, linewidth=0.5, label='Train Loss (raw)')
 
             # Smooth with moving average (window=100)
             if len(train_vals) > 100:
                 window = 100
                 smoothed = np.convolve(train_vals, np.ones(window)/window, mode='valid')
                 smooth_steps = train_steps[window-1:]
-                ax.plot(smooth_steps, smoothed, 'b-', linewidth=2, label='Train Loss (smoothed)')
+                ax.plot(smooth_steps, smoothed, color='blue', linewidth=2.5, label='Train Loss (smoothed)')
 
         # Plot validation loss
         if self.val_losses:
@@ -245,13 +245,16 @@ class Trainer:
             # Convert epochs to steps for alignment
             steps_per_epoch = len(self.train_loader)
             val_steps = [e * steps_per_epoch for e in val_epochs]
-            ax.plot(val_steps, val_vals, 'r-', linewidth=2, marker='o', markersize=5, label='Val Loss')
+            ax.plot(val_steps, val_vals, color='red', linewidth=2.5, marker='o', markersize=6,
+                   markerfacecolor='red', markeredgecolor='darkred', markeredgewidth=1.5, label='Val Loss')
 
-        ax.set_xlabel('Training Steps', fontsize=12)
-        ax.set_ylabel('Loss', fontsize=12)
-        ax.set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
-        ax.legend(fontsize=10)
-        ax.grid(True, alpha=0.3)
+        ax.set_xlabel('Training Steps', fontsize=13)
+        ax.set_ylabel('Loss', fontsize=13)
+        ax.set_title('Training and Validation Loss', fontsize=15, fontweight='bold')
+        ax.legend(fontsize=11, loc='upper right', framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         plt.tight_layout()
 
         # Save
@@ -263,44 +266,54 @@ class Trainer:
 
     @torch.no_grad()
     def _save_component_plots(self):
-        """Save individual loss component plots"""
+        """Save combined loss component plot"""
         import matplotlib
         matplotlib.use('Agg')  # Non-interactive backend
         import matplotlib.pyplot as plt
 
-        # Create subplot for each component
+        # Create a single plot for all components
         components_to_plot = [k for k, v in self.train_loss_components.items() if v]
         if not components_to_plot:
             return  # No components to plot
 
-        n_components = len(components_to_plot)
-        fig, axes = plt.subplots(n_components, 1, figsize=(12, 4 * n_components), squeeze=False)
-        axes = axes.flatten()
+        fig, ax = plt.subplots(figsize=(14, 8))
 
-        for idx, component_name in enumerate(components_to_plot):
+        # Color palette for different components
+        colors = {
+            'l1': '#FF6B6B',           # Red
+            'scale_inv': '#4ECDC4',    # Teal
+            'gradient': '#45B7D1',     # Blue
+            'ssim': '#FFA07A',         # Light Orange
+            'berhu': '#98D8C8'         # Light Green
+        }
+
+        # Plot each component
+        for component_name in components_to_plot:
             data = self.train_loss_components[component_name]
             if not data:
                 continue
 
             steps, values = zip(*data)
-            ax = axes[idx]
+            color = colors.get(component_name, '#666666')
 
-            # Plot raw values
-            ax.plot(steps, values, alpha=0.3, linewidth=0.5, label=f'{component_name} (raw)')
+            # Plot raw values with low alpha
+            ax.plot(steps, values, color=color, alpha=0.15, linewidth=0.5)
 
             # Add smoothed line if enough data
             if len(values) > 100:
                 window = 100
                 smoothed = np.convolve(values, np.ones(window)/window, mode='valid')
                 smooth_steps = steps[window-1:]
-                ax.plot(smooth_steps, smoothed, linewidth=2, label=f'{component_name} (smoothed)')
+                label = component_name.replace('_', ' ').title()
+                ax.plot(smooth_steps, smoothed, color=color, linewidth=2.5, label=label)
 
-            ax.set_xlabel('Training Steps', fontsize=10)
-            ax.set_ylabel('Loss Value', fontsize=10)
-            ax.set_title(f'{component_name.replace("_", " ").title()} Loss', fontsize=12, fontweight='bold')
-            ax.legend(fontsize=9)
-            ax.grid(True, alpha=0.3)
-
+        ax.set_xlabel('Training Steps', fontsize=13)
+        ax.set_ylabel('Loss Value', fontsize=13)
+        ax.set_title('Loss Components (Combined)', fontsize=15, fontweight='bold')
+        ax.legend(fontsize=11, loc='upper right', framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         plt.tight_layout()
 
         # Save
