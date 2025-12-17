@@ -8,3 +8,4 @@ tqdm
 tensorboard
 pyrealsense2
 matplotlib
+seaborn
