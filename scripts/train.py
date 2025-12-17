@@ -14,6 +14,7 @@ from tqdm import tqdm
 from realdepth.model_utils import get_model, count_params, DepthLoss
 from realdepth.losses import DepthMetrics, format_depth_metric
 from realdepth.depth_datasets import create_dataloaders
+from realdepth.plot import save_loss_plots, save_component_plots
 
 class Trainer:
     def __init__(self, cfg):
@@ -123,10 +124,18 @@ class Trainer:
         print(f"\nDone! Best model: {self.ckpt_dir / 'best.pth'}")
 
         # Save training loss plot
-        self._save_loss_plots()
+        save_loss_plots(
+            self.train_losses,
+            self.val_losses,
+            len(self.train_loader),
+            self.vis_dir / 'training_loss.png'
+        )
 
         # Save loss components plot
-        self._save_component_plots()
+        save_component_plots(
+            self.train_loss_components,
+            self.vis_dir / 'loss_components.png'
+        )
 
         # Run comprehensive validation with depth-stratified metrics
         self._comprehensive_validate()
@@ -217,111 +226,6 @@ class Trainer:
         grid = vutils.make_grid(vis_samples, nrow=3, normalize=True, padding=2)
         vutils.save_image(grid, self.vis_dir / f'epoch_{self.epoch:03d}.png')
         self.writer.add_image('validation/samples', grid, self.epoch)
-
-    @torch.no_grad()
-    def _save_loss_plots(self):
-        """Save training and validation loss plots"""
-        import matplotlib
-        matplotlib.use('Agg')  # Non-interactive backend
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(figsize=(14, 7))
-
-        # Plot training loss (raw + smoothed)
-        if self.train_losses:
-            train_steps, train_vals = zip(*self.train_losses)
-            ax.plot(train_steps, train_vals, color='lightblue', alpha=0.3, linewidth=0.5, label='Train Loss (raw)')
-
-            # Smooth with moving average (window=100)
-            if len(train_vals) > 100:
-                window = 100
-                smoothed = np.convolve(train_vals, np.ones(window)/window, mode='valid')
-                smooth_steps = train_steps[window-1:]
-                ax.plot(smooth_steps, smoothed, color='blue', linewidth=2.5, label='Train Loss (smoothed)')
-
-        # Plot validation loss
-        if self.val_losses:
-            val_epochs, val_vals = zip(*self.val_losses)
-            # Convert epochs to steps for alignment
-            steps_per_epoch = len(self.train_loader)
-            val_steps = [e * steps_per_epoch for e in val_epochs]
-            ax.plot(val_steps, val_vals, color='red', linewidth=2.5, marker='o', markersize=6,
-                   markerfacecolor='red', markeredgecolor='darkred', markeredgewidth=1.5, label='Val Loss')
-
-        ax.set_xlabel('Training Steps', fontsize=13)
-        ax.set_ylabel('Loss', fontsize=13)
-        ax.set_title('Training and Validation Loss', fontsize=15, fontweight='bold')
-        ax.legend(fontsize=11, loc='upper right', framealpha=0.9)
-        ax.grid(True, alpha=0.3, linestyle='--')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.tight_layout()
-
-        # Save
-        plot_path = self.vis_dir / 'training_loss.png'
-        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        print(f"\nTraining loss plot saved to: {plot_path}")
-
-    @torch.no_grad()
-    def _save_component_plots(self):
-        """Save combined loss component plot"""
-        import matplotlib
-        matplotlib.use('Agg')  # Non-interactive backend
-        import matplotlib.pyplot as plt
-
-        # Create a single plot for all components
-        components_to_plot = [k for k, v in self.train_loss_components.items() if v]
-        if not components_to_plot:
-            return  # No components to plot
-
-        fig, ax = plt.subplots(figsize=(14, 8))
-
-        # Color palette for different components
-        colors = {
-            'l1': '#FF6B6B',           # Red
-            'scale_inv': '#4ECDC4',    # Teal
-            'gradient': '#45B7D1',     # Blue
-            'ssim': '#FFA07A',         # Light Orange
-            'berhu': '#98D8C8'         # Light Green
-        }
-
-        # Plot each component
-        for component_name in components_to_plot:
-            data = self.train_loss_components[component_name]
-            if not data:
-                continue
-
-            steps, values = zip(*data)
-            color = colors.get(component_name, '#666666')
-
-            # Plot raw values with low alpha
-            ax.plot(steps, values, color=color, alpha=0.15, linewidth=0.5)
-
-            # Add smoothed line if enough data
-            if len(values) > 100:
-                window = 100
-                smoothed = np.convolve(values, np.ones(window)/window, mode='valid')
-                smooth_steps = steps[window-1:]
-                label = component_name.replace('_', ' ').title()
-                ax.plot(smooth_steps, smoothed, color=color, linewidth=2.5, label=label)
-
-        ax.set_xlabel('Training Steps', fontsize=13)
-        ax.set_ylabel('Loss Value', fontsize=13)
-        ax.set_title('Loss Components (Combined)', fontsize=15, fontweight='bold')
-        ax.legend(fontsize=11, loc='upper right', framealpha=0.9)
-        ax.grid(True, alpha=0.3, linestyle='--')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.tight_layout()
-
-        # Save
-        plot_path = self.vis_dir / 'loss_components.png'
-        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        print(f"Loss components plot saved to: {plot_path}")
 
 if __name__ == "__main__":
     config_path = 'configs/realsense.yaml'

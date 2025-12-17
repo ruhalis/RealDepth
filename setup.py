@@ -18,6 +18,7 @@ setup(
         "pyyaml",
         "tqdm",
         "tensorboard",
+        "seaborn",
         "matplotlib"
         # pyrealsense2
     ],
