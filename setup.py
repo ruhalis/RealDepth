@@ -19,7 +19,8 @@ setup(
         "tqdm",
         "tensorboard",
         "seaborn",
-        "matplotlib"
+        "matplotlib",
+        "pytest"
         # pyrealsense2
     ],
     extras_require={
