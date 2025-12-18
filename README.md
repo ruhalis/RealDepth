@@ -44,7 +44,7 @@ Calibrate your 3d camera
 ```bash
 python scripts/collect_dataset.py --duration 1200 --fps 30
 ```
-fps only 5 or 30
+fps only 6, 15 or 30
 
 This creates `collected_dataset/<timestamp>/` with:
 - `rgb/` - RGB images (1280x720)

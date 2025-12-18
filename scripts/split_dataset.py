@@ -85,13 +85,17 @@ def copy_files(splits: dict, output_dir: Path, copy_intrinsics: Path = None):
         print(f"\nCopied intrinsics.txt to {output_dir}")
 
 def main():
+    # Determine project root (parent of scripts directory)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
     INPUT_DIR = "collected_dataset"  # Input directory containing collected data
     OUTPUT_DIR = "dataset"           # Output directory for split dataset
     TRAIN_RATIO = 0.8                # Train split ratio
     VAL_RATIO = 0.1                  # Validation split ratio
     TEST_RATIO = 0.1                 # Test split ratio
     SEED = 42                        # Random seed for reproducibility
-    
+
     # Validate ratios
     total_ratio = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
     if abs(total_ratio - 1.0) > 0.001:
@@ -99,9 +103,10 @@ def main():
         TRAIN_RATIO /= total_ratio
         VAL_RATIO /= total_ratio
         TEST_RATIO /= total_ratio
-    
-    input_dir = Path(INPUT_DIR)
-    output_dir = Path(OUTPUT_DIR)
+
+    # Use project root for paths
+    input_dir = project_root / INPUT_DIR
+    output_dir = project_root / OUTPUT_DIR
     
     if not input_dir.exists():
         print(f"Error: Input directory '{input_dir}' does not exist!")

@@ -258,7 +258,8 @@ class RealSenseRecorder:
 def main():
     # Load config from configs/realsense.yaml first
     script_dir = Path(__file__).parent
-    config_path = script_dir / 'configs' / 'realsense.yaml'
+    project_root = script_dir.parent
+    config_path = project_root / 'configs' / 'realsense.yaml'
 
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
@@ -295,9 +296,9 @@ def main():
     height, width = cfg['image_size']
     resolution = (width, height)
 
-    # Create output path
+    # Create output path in project root
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = script_dir / 'collected_dataset' / timestamp
+    output_dir = project_root / 'collected_dataset' / timestamp
 
     print("=" * 60)
     print("RealSense D435i Dataset Collection")
