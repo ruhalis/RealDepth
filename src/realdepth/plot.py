@@ -21,8 +21,8 @@ def save_loss_plots(train_losses, val_losses, steps_per_epoch, output_path):
         # Convert epochs to steps for alignment
         val_steps = [e * steps_per_epoch for e in val_epochs]
 
-        sns.lineplot(x=train_steps, y=train_vals, ax=ax, label='Training Loss')
-        sns.lineplot(x=val_steps, y=val_vals, ax=ax, label='Validation Loss')
+        sns.lineplot(x=train_steps, y=train_vals, ax=ax, alpha=0.8, label='Training Loss')
+        sns.lineplot(x=val_steps, y=val_vals, ax=ax, alpha=0.8,label='Validation Loss')
 
         ax.set_xlabel('Training Steps', fontsize=13)
         ax.set_ylabel('Loss Value', fontsize=13)
@@ -55,7 +55,7 @@ def save_component_plots(train_loss_components, output_path):
         steps, values = zip(*data)
         label = component_name.replace('_', ' ').title()
 
-        sns.lineplot(x=steps, y=values, ax=ax, label=label)
+        sns.lineplot(x=steps, y=values, ax=ax, label=label, alpha=0.5)
 
     ax.set_xlabel('Training Steps', fontsize=13)
     ax.set_ylabel('Loss Value', fontsize=13)
