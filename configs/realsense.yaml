@@ -8,7 +8,7 @@ exp_dir: ./experiments
 data_dir: ./dataset  # Split dataset with train/val/test
 max_depth: 10.0
 depth_scale: 0.001  # mm to meters
-image_size: [720, 1280]  # [height, width] from your RealSense D435i
+image_size: [480, 640] 
 
 # Model
 model: realdepth_resnet
@@ -31,8 +31,6 @@ num_workers: 4
 
 # Data Collection
 collection:
-  fps: 30              # Camera frame rate (6, 15, or 30)
-  align_depth: true    # Align depth to color frame
-  apply_filters: true  # Apply spatial/temporal/hole-filling filters
-  duration: 60         # Default recording duration (seconds)
-  save_interval: 1     # Save every Nth frame (1 = all frames)
+  fps: 30               # Camera frame rate (6, 15, or 30)
+  duration: 5         # seconds
+  image_size: [480, 640] 

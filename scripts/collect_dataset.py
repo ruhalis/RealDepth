@@ -1,17 +1,6 @@
 """
 Intel RealSense D435i Data Collection Script
-Collects linked RGB and Depth frames
-
-Usage:
-    python collect_dataset.py                    # Uses defaults from config
-    python collect_dataset.py --duration 1200    # Override duration
-    python collect_dataset.py --fps 15           # Override FPS (6, 15, or 30)
-
-All settings loaded from configs/realsense.yaml
-Command-line args override config defaults
 """
-import os
-import sys
 import time
 import argparse
 import yaml
@@ -28,27 +17,21 @@ class RealSenseRecorder:
     def __init__(
         self,
         output_dir,
-        rgb_resolution=(1280, 720),
-        depth_resolution=(1280, 720),
-        fps=30,
-        align_depth=True,
-        apply_filters=True
+        rgb_resolution=(640, 480),
+        depth_resolution=(640, 480),
+        fps=30
     ):
         self.output_dir = Path(output_dir)
         self.rgb_resolution = rgb_resolution
         self.depth_resolution = depth_resolution
         self.fps = fps
-        self.align_depth = align_depth
-        self.apply_filters = apply_filters
         
         # Create output directories
         self.rgb_dir = self.output_dir / 'rgb'
         self.depth_dir = self.output_dir / 'depth'
-        self.depth_color_dir = self.output_dir / 'depth_colorized'
         
         self.rgb_dir.mkdir(parents=True, exist_ok=True)
         self.depth_dir.mkdir(parents=True, exist_ok=True)
-        self.depth_color_dir.mkdir(parents=True, exist_ok=True)
         
         # Initialize RealSense
         self.pipeline = rs.pipeline()
@@ -69,14 +52,12 @@ class RealSenseRecorder:
         )
         
         # Depth processing filters
-        if self.apply_filters:
-            self.spatial_filter = rs.spatial_filter()
-            self.temporal_filter = rs.temporal_filter()
-            self.hole_filling = rs.hole_filling_filter()
+        self.spatial_filter = rs.spatial_filter()
+        self.temporal_filter = rs.temporal_filter()
+        self.hole_filling = rs.hole_filling_filter()
         
         # Alignment
-        if self.align_depth:
-            self.align = rs.align(rs.stream.color)
+        self.align = rs.align(rs.stream.color)
         
         # Colorizer for visualization
         self.colorizer = rs.colorizer()
@@ -97,8 +78,6 @@ class RealSenseRecorder:
         firmware = device.get_info(rs.camera_info.firmware_version)
         
         print(f"Device: {device_name}")
-        print(f"Serial: {serial}")
-        print(f"Firmware: {firmware}")
         
         # Get depth scale
         depth_sensor = device.first_depth_sensor()
@@ -137,8 +116,7 @@ class RealSenseRecorder:
     def process_frames(self, frames):
         """Process and align frames"""
         # Align depth to color
-        if self.align_depth:
-            frames = self.align.process(frames)
+        frames = self.align.process(frames)
         
         depth_frame = frames.get_depth_frame()
         color_frame = frames.get_color_frame()
@@ -147,10 +125,9 @@ class RealSenseRecorder:
             return None, None, None
         
         # Apply depth filters
-        if self.apply_filters:
-            depth_frame = self.spatial_filter.process(depth_frame)
-            depth_frame = self.temporal_filter.process(depth_frame)
-            depth_frame = self.hole_filling.process(depth_frame)
+        depth_frame = self.spatial_filter.process(depth_frame)
+        depth_frame = self.temporal_filter.process(depth_frame)
+        depth_frame = self.hole_filling.process(depth_frame)
         
         # Convert to numpy arrays
         color_image = np.asanyarray(color_frame.get_data())
@@ -175,22 +152,12 @@ class RealSenseRecorder:
         depth_path = self.depth_dir / filename
         cv2.imwrite(str(depth_path), depth_image)
         
-        # Save colorized depth for visualization
-        depth_color_path = self.depth_color_dir / filename
-        cv2.imwrite(str(depth_color_path), depth_colorized)
-        
         self.frame_count += 1
     
-    def record(self, duration_seconds, save_interval=None):
+    def record(self, duration_seconds):
         """
         Record frames for specified duration
-        
-        Args:
-            duration_seconds: Total recording time in seconds
-            save_interval: Save every N-th frame (None = save all)
         """
-        print(f"\nRecording for {duration_seconds} seconds...")
-        print(f"Output directory: {self.output_dir}")
         print("Press 'q' to stop early\n")
         
         start_time = time.time()
@@ -217,10 +184,9 @@ class RealSenseRecorder:
                     continue
                 
                 frame_idx += 1
-                
-                # Save frame (optionally skip some frames)
-                if save_interval is None or frame_idx % save_interval == 0:
-                    self.save_frame(color_image, depth_image, depth_colorized)
+
+                # Save frame
+                self.save_frame(color_image, depth_image, depth_colorized)
                 
                 # Display preview
                 preview = np.hstack([
@@ -268,11 +234,6 @@ def main():
     collection_cfg = cfg.get('collection', {})
     default_duration = collection_cfg.get('duration', 60)
     default_fps = collection_cfg.get('fps', 30)
-    align_depth = collection_cfg.get('align_depth', True)
-    apply_filters = collection_cfg.get('apply_filters', True)
-    save_interval = collection_cfg.get('save_interval', 1)
-    if save_interval == 1:
-        save_interval = None  # None means save all frames
 
     parser = argparse.ArgumentParser(
         description='Record RGB-D dataset from Intel RealSense D435i'
@@ -293,7 +254,7 @@ def main():
     args = parser.parse_args()
 
     # Extract resolution from config [height, width] -> (width, height)
-    height, width = cfg['image_size']
+    height, width = cfg['collection']['image_size']
     resolution = (width, height)
 
     # Create output path in project root
@@ -309,18 +270,13 @@ def main():
         output_dir=output_dir,
         rgb_resolution=resolution,
         depth_resolution=resolution,
-        fps=args.fps,
-        align_depth=align_depth,
-        apply_filters=apply_filters
+        fps=args.fps
     )
 
     try:
         recorder.start()
         recorder.save_intrinsics()
-        recorder.record(
-            duration_seconds=args.duration,
-            save_interval=save_interval
-        )
+        recorder.record(duration_seconds=args.duration)
     finally:
         recorder.stop()
     
