@@ -24,9 +24,10 @@ def run_comprehensive_validation(model, loader, device, depth_thresholds=[3.0, 5
     with torch.no_grad():
         for batch in tqdm(loader, desc="Computing metrics"):
             pred = model(batch['rgb'].to(device))
-            all_preds.append(pred)
-            all_targets.append(batch['depth'].to(device))
-            all_masks.append(batch['mask'].to(device))
+            # Move to CPU immediately to avoid GPU memory accumulation
+            all_preds.append(pred.cpu())
+            all_targets.append(batch['depth'])  # Keep on CPU
+            all_masks.append(batch['mask'])  # Keep on CPU
 
     # Concatenate all batches
     print("Concatenating batches...")
