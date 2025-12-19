@@ -125,8 +125,7 @@ def main():
     """Main function"""
     args = parse_args()
 
-    # Device selection
-    device = setup_device(args.device)
+    device = setup_device('auto')
 
     # Load checkpoint and model
     model, config = load_checkpoint(args.checkpoint, device)
