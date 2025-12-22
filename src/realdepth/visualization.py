@@ -6,12 +6,23 @@ import numpy as np
 import cv2
 
 
-def visualize_depth(depth, max_depth):
+def visualize_depth(depth, max_depth, use_dynamic_range=False):
     """
     Convert depth map to colorized visualization
     """
-    # Normalize to 0-255
-    depth_norm = np.clip(depth / max_depth, 0, 1) * 255
+    if use_dynamic_range:
+        # Dynamic range based on min/max of current depth
+        vmin = depth.min()
+        vmax = depth.max()
+        if vmax - vmin < 1e-3:  # Avoid division by zero
+            vmax = vmin + 1e-3
+        
+        depth_norm = (depth - vmin) / (vmax - vmin)
+        depth_norm = np.clip(depth_norm, 0, 1) * 255
+    else:
+        # Fixed range 0 to max_depth
+        depth_norm = np.clip(depth / max_depth, 0, 1) * 255
+        
     depth_uint8 = depth_norm.astype(np.uint8)
 
     # Apply JET colormap
@@ -83,12 +94,12 @@ def display_image_result(rgb_image, depth, max_depth):
     cv2.destroyAllWindows()
 
 
-def create_live_display(color_image, depth, max_depth, fps=None, paused=False):
+def create_live_display(color_image, depth, max_depth, fps=None, paused=False, use_dynamic_range=False):
     """
     Create live display for real-time inference
     """
     # Colorize depth
-    depth_color = visualize_depth(depth, max_depth)
+    depth_color = visualize_depth(depth, max_depth, use_dynamic_range=use_dynamic_range)
 
     # Resize depth to match RGB
     h, w = color_image.shape[:2]
