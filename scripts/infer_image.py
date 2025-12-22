@@ -69,46 +69,47 @@ def convert_depth_to_m(depth_mm):
     return depth_mm / 1000.0
 
 
-def create_comparison_plot(rgb_image, depth_gt, depth_pred, max_depth, metrics, save_path=None):
+def create_comparison_plot(rgb_image, depth_gt, depth_pred, save_path=None):
     """
-    Create a matplotlib plot with RGB | Ground Truth | Prediction.
+    Create a detailed plot with RGB | Ground Truth | Prediction.
+    Concatenates images to avoid any whitespace.
     """
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
     depth_gt_mm = convert_depth_to_mm(depth_gt)
     depth_pred_mm = convert_depth_to_mm(depth_pred)
-    max_depth_mm = convert_depth_to_mm(max_depth)
     
-    # RGB (convert BGR to RGB)
-    axes[0].imshow(cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB))
-    axes[0].set_title('RGB Input', fontsize=14, fontweight='bold')
-    axes[0].axis('off')
+    # Calculate dynamic range for heatmap based on both images
+    vmin = min(depth_gt_mm.min(), depth_pred_mm.min())
+    vmax = max(depth_gt_mm.max(), depth_pred_mm.max())
     
-    # Ground Truth Depth
-    im_gt = axes[1].imshow(depth_gt_mm, cmap='jet', vmin=0, vmax=max_depth_mm)
-    axes[1].set_title('Ground Truth (mm)', fontsize=14, fontweight='bold')
-    axes[1].axis('off')
+    # Normalize and apply colormap
+    norm = plt.Normalize(vmin=vmin, vmax=vmax)
+    cmap = plt.get_cmap('jet')
     
-    # Predicted Depth
-    im_pred = axes[2].imshow(depth_pred_mm, cmap='jet', vmin=0, vmax=max_depth_mm)
-    axes[2].set_title('Prediction (mm)', fontsize=14, fontweight='bold')
-    axes[2].axis('off')
+    # Apply colormap - returns (H, W, 4) float array
+    # We take :3 to get RGB, ignoring alpha
+    gt_colored = cmap(norm(depth_gt_mm))[:, :, :3]
+    pred_colored = cmap(norm(depth_pred_mm))[:, :, :3]
     
-    # Add colorbar
-    cbar = fig.colorbar(im_pred, ax=axes, orientation='horizontal', 
-                        fraction=0.05, pad=0.08, shrink=0.6)
-    cbar.set_label('Depth (millimeters)', fontsize=12)
+    # Prepare RGB image (convert to float 0-1)
+    rgb_colored = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     
-    # Add metrics text
-    metrics_text = (f"MAE: {metrics['mae']:.4f}m ({metrics['mae']*1000:.1f}mm)  |  "
-                   f"RMSE: {metrics['rmse']:.4f}m ({metrics['rmse']*1000:.1f}mm)  |  "
-                   f"AbsRel: {metrics['abs_rel']:.4f}")
-    fig.suptitle(metrics_text, fontsize=11, y=0.02)
+    # Concatenate images horizontally
+    combined_img = np.hstack((rgb_colored, gt_colored, pred_colored))
     
-    plt.tight_layout()
+    # Create figure with tight layout calculation
+    h, w, c = combined_img.shape
+    fig_height = 5
+    fig_width = fig_height * (w / h)
+    
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    # Create an axes that covers the entire figure (0,0,1,1)
+    ax = plt.axes([0, 0, 1, 1], frameon=False)
+    ax.set_axis_off()
+    
+    ax.imshow(combined_img)
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0)
         print(f"Plot saved to: {save_path}")
     
     plt.show()
@@ -188,7 +189,7 @@ def main():
 
     # Create comparison plot
     print("\nCreating comparison plot...")
-    create_comparison_plot(image_bgr, depth_gt_resized, depth_pred, max_depth, metrics, save_path)
+    create_comparison_plot(image_bgr, depth_gt_resized, depth_pred, save_path)
 
     print("\nDone!")
 
