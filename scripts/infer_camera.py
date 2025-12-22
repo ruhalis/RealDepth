@@ -14,10 +14,69 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import cv2
-import pyrealsense2 as rs
+import numpy as np
+# import pyrealsense2 as rs
 
 from realdepth.predictor import setup_device, load_checkpoint, preprocess_rgb_image, predict_depth, create_preprocessing_transform
 from realdepth.visualization import save_depth_outputs, create_live_display
+
+
+class WebcamCamera:
+    """
+    Standard Webcam wrapper for inference
+    """
+    def __init__(self, camera_id=0, resolution=(1280, 720), fps=30):
+        """
+        Initialize Webcam
+        
+        Args:
+            camera_id: Camera device definition (default: 0)
+            resolution: (width, height) tuple
+            fps: Desired FPS (may not be respected by all webcams)
+        """
+        self.camera_id = camera_id
+        self.resolution = resolution
+        self.fps = fps
+        self.cap = None
+        self.is_running = False
+
+    def start(self):
+        """Start camera"""
+        print(f"Starting Webcam (ID: {self.camera_id})...")
+        self.cap = cv2.VideoCapture(self.camera_id)
+        
+        # Set properties
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+        self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+        
+        if not self.cap.isOpened():
+             raise RuntimeError(f"Could not open webcam {self.camera_id}")
+             
+        # Warm up
+        print("Warming up camera...")
+        for _ in range(5):
+            self.cap.read()
+        
+        self.is_running = True
+        print("Webcam ready!")
+
+    def get_frame(self):
+        """Get latest frame"""
+        if not self.is_running or self.cap is None:
+             raise RuntimeError("Webcam not started")
+        
+        ret, frame = self.cap.read()
+        if not ret:
+            return None
+        return frame
+
+    def stop(self):
+        """Stop camera"""
+        if self.cap:
+            self.cap.release()
+        self.is_running = False
+        print("Webcam stopped")
 
 
 class RealSenseCamera:
@@ -202,7 +261,8 @@ def run_inference_loop(camera, model, config, device, args):
                     depth,
                     max_depth,
                     fps=fps_tracker.get_fps(),
-                    paused=paused
+                    paused=paused,
+                    use_dynamic_range=not args.fixed_range
                 )
 
                 cv2.imshow('RealDepth - Live Camera', display)
@@ -277,8 +337,14 @@ Controls:
                        help='Camera resolution (default: 1280x720)')
     parser.add_argument('--output-dir', '-o', type=str, default='./snapshots',
                        help='Directory for saved snapshots (default: ./snapshots)')
+    parser.add_argument('--camera-type', type=str, default='realsense', choices=['realsense', 'webcam'],
+                       help='Camera type to use (default: realsense)')
+    parser.add_argument('--camera-id', type=int, default=0,
+                       help='Webcam ID (default: 0)')
     parser.add_argument('--no-filters', action='store_true',
                        help='Disable RealSense depth filters')
+    parser.add_argument('--fixed-range', action='store_true',
+                       help='Use fixed depth range (0-max_depth) instead of dynamic per-frame scaling')
 
     return parser.parse_args()
 
@@ -296,12 +362,19 @@ def main():
     # Parse resolution
     resolution = parse_resolution(args.resolution)
 
-    # Initialize RealSense camera
-    camera = RealSenseCamera(
-        resolution=resolution,
-        fps=args.fps,
-        apply_filters=not args.no_filters
-    )
+    # Initialize Camera
+    if args.camera_type == 'realsense':
+        camera = RealSenseCamera(
+            resolution=resolution,
+            fps=args.fps,
+            apply_filters=not args.no_filters
+        )
+    else:
+        camera = WebcamCamera(
+            camera_id=args.camera_id,
+            resolution=resolution,
+            fps=args.fps
+        )
 
     try:
         camera.start()

@@ -56,10 +56,17 @@ def load_depth(depth_path):
 
 def convert_depth_to_mm(depth_m):
     """
-    Convert depth in mm to meters
+    Convert depth from meters to millimeters
     """
-    depth_mm = depth_m * 1000.0
-    return depth_mm
+    return depth_m * 1000.0
+
+
+def convert_depth_to_m(depth_mm):
+    """
+    Convert depth from millimeters to meters
+    """
+    # RealSense depth is often in mm, divide by 1000 to get meters
+    return depth_mm / 1000.0
 
 
 def create_comparison_plot(rgb_image, depth_gt, depth_pred, max_depth, metrics, save_path=None):
@@ -68,7 +75,9 @@ def create_comparison_plot(rgb_image, depth_gt, depth_pred, max_depth, metrics, 
     """
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    depth_pred = convert_depth_to_mm(depth_pred)
+    depth_gt_mm = convert_depth_to_mm(depth_gt)
+    depth_pred_mm = convert_depth_to_mm(depth_pred)
+    max_depth_mm = convert_depth_to_mm(max_depth)
     
     # RGB (convert BGR to RGB)
     axes[0].imshow(cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB))
@@ -76,19 +85,19 @@ def create_comparison_plot(rgb_image, depth_gt, depth_pred, max_depth, metrics, 
     axes[0].axis('off')
     
     # Ground Truth Depth
-    im_gt = axes[1].imshow(depth_gt, cmap='jet', vmin=0, vmax=max_depth)
-    axes[1].set_title('Ground Truth Depth', fontsize=14, fontweight='bold')
+    im_gt = axes[1].imshow(depth_gt_mm, cmap='jet', vmin=0, vmax=max_depth_mm)
+    axes[1].set_title('Ground Truth (mm)', fontsize=14, fontweight='bold')
     axes[1].axis('off')
     
     # Predicted Depth
-    im_pred = axes[2].imshow(depth_pred, cmap='jet', vmin=0, vmax=max_depth)
-    axes[2].set_title('Predicted Depth', fontsize=14, fontweight='bold')
+    im_pred = axes[2].imshow(depth_pred_mm, cmap='jet', vmin=0, vmax=max_depth_mm)
+    axes[2].set_title('Prediction (mm)', fontsize=14, fontweight='bold')
     axes[2].axis('off')
     
     # Add colorbar
     cbar = fig.colorbar(im_pred, ax=axes, orientation='horizontal', 
                         fraction=0.05, pad=0.08, shrink=0.6)
-    cbar.set_label('Depth (meters)', fontsize=12)
+    cbar.set_label('Depth (millimeters)', fontsize=12)
     
     # Add metrics text
     metrics_text = (f"MAE: {metrics['mae']:.4f}m ({metrics['mae']*1000:.1f}mm)  |  "
@@ -150,7 +159,8 @@ def main():
         raise FileNotFoundError(f"Ground truth depth not found: {depth_path}\n"
                                f"Expected structure: .../rgb/filename.png -> .../depth/filename.png")
     
-    depth_gt, depth_gt_mm = load_depth(depth_path)
+    depth_gt_mm = load_depth(depth_path)
+    depth_gt = convert_depth_to_m(depth_gt_mm)
     print(f"Ground truth range: {depth_gt.min():.2f}m - {depth_gt.max():.2f}m "
           f"({depth_gt_mm.min():.0f}mm - {depth_gt_mm.max():.0f}mm)")
 
@@ -173,10 +183,8 @@ def main():
     print(f"RMSE:    {metrics['rmse']:.4f}m ({metrics['rmse']*1000:.1f}mm)")
     print(f"AbsRel:  {metrics['abs_rel']:.4f}")
 
-    # Create output directory and save path
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    save_path = output_dir / f"{rgb_path.stem}_comparison.png" if args.save else None
+    # Plot save path (currently disabled as --save was removed)
+    save_path = None
 
     # Create comparison plot
     print("\nCreating comparison plot...")
