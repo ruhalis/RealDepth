@@ -211,3 +211,5 @@ dataset/
 experiments/
 CLAUDE.md
 .vscode
+
+.DS_Store
