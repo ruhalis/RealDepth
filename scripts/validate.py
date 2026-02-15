@@ -51,7 +51,7 @@ def load_checkpoint(checkpoint_path, config_path, device):
         config = checkpoint['config']
         print("Using config from checkpoint")
 
-    model_name = config.get('model', 'realdepth_resnet')
+    model_name = config.get('model', 'realdepth')
     max_depth = config.get('max_depth', 10.0)
 
     # Create model

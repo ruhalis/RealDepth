@@ -8,7 +8,7 @@ from .predictor import setup_device, load_checkpoint, preprocess_rgb_image, pred
 from .visualization import visualize_depth, save_depth_outputs, display_image_result, create_live_display
 from .validation import run_comprehensive_validation
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "DepthEstimationNet",

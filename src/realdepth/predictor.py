@@ -42,7 +42,7 @@ def load_checkpoint(checkpoint_path, device):
         raise ValueError("Invalid checkpoint format. Expected keys: 'model', 'config'")
 
     config = checkpoint['config']
-    model_name = config.get('model', 'realdepth_resnet')
+    model_name = config.get('model', 'realdepth')
     max_depth = config.get('max_depth', 10.0)
 
     model = get_model(model_name, max_depth=max_depth)

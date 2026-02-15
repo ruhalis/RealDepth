@@ -1,23 +1,26 @@
 # RealDepth - RealSense D435i Config
 # ====================================
 
-exp_name: realsense_v1
+exp_name: realsense
 exp_dir: ./experiments
 
 # Dataset
 data_dir: ./dataset  # Split dataset with train/val/test
 max_depth: 10.0
 depth_scale: 0.001  # mm to meters
-image_size: [480, 640] 
+image_size: [480, 640]
 
 # Model
-model: realdepth_resnet
+model: realdepth
+pretrained_encoder: true
 
 # Training
 epochs: 100
-batch_size: 2
+batch_size: 4
 lr: 0.0001
 weight_decay: 0.0001
+encoder_lr: 0.00001        # Lower LR for pretrained encoder
+freeze_encoder_epochs: 20  # Freeze encoder for first N epochs
 
 # Loss
 w_l1: 1.0
@@ -33,4 +36,4 @@ num_workers: 4
 collection:
   fps: 30               # Camera frame rate (6, 15, or 30)
   duration: 5         # seconds
-  image_size: [480, 640] 
+  image_size: [480, 640]
