@@ -285,6 +285,8 @@ def run_inference_loop(camera, model, config, device, args):
                     snapshot_count += 1
             elif key == ord(' '):  # Pause/Resume
                 paused = not paused
+                if hasattr(model, 'reset_temporal'):
+                    model.reset_temporal()
                 print("Paused" if paused else "Resumed")
 
     finally:

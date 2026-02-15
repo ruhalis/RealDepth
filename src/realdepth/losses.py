@@ -171,6 +171,17 @@ class BerHuLoss(nn.Module):
         return berhu.mean()
 
 
+class TemporalConsistencyLoss(nn.Module):
+    """L1 difference between consecutive depth predictions (penalizes flicker)."""
+
+    def forward(self, pred_current, pred_previous, mask=None):
+        diff = torch.abs(pred_current - pred_previous)
+        if mask is not None:
+            diff = diff * mask
+            return diff.sum() / (mask.sum() + 1e-8)
+        return diff.mean()
+
+
 class CombinedDepthLoss(nn.Module):
     """
     Combined loss function with weights

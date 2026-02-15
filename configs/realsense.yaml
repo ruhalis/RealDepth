@@ -9,18 +9,21 @@ data_dir: ./dataset  # Split dataset with train/val/test
 max_depth: 10.0
 depth_scale: 0.001  # mm to meters
 image_size: [480, 640]
+sequence_length: 3   # Consecutive frames per training sample
 
 # Model
 model: realdepth
 pretrained_encoder: true
+# pretrained_checkpoint: experiments/realsense/checkpoints/best.pth  # Optional: load weights
 
-# Training
-epochs: 100
-batch_size: 4
+# Training — three-stage
+epochs: 80
+batch_size: 2
 lr: 0.0001
 weight_decay: 0.0001
 encoder_lr: 0.00001        # Lower LR for pretrained encoder
-freeze_encoder_epochs: 20  # Freeze encoder for first N epochs
+freeze_all_epochs: 10      # Stage 1: train only ConvGRU
+freeze_encoder_epochs: 30  # Stage 2: train ConvGRU + decoder (cumulative)
 
 # Loss
 w_l1: 1.0
@@ -28,6 +31,7 @@ w_si: 0.5
 w_grad: 0.5
 w_ssim: 0.1
 w_berhu: 0.1
+w_temporal: 0.5
 
 # System
 num_workers: 4
