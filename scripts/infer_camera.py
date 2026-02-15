@@ -345,7 +345,6 @@ Controls:
                        help='Disable RealSense depth filters')
     parser.add_argument('--fixed-range', action='store_true',
                        help='Use fixed depth range (0-max_depth) instead of dynamic per-frame scaling')
-
     return parser.parse_args()
 
 
