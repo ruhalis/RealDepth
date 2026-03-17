@@ -10,3 +10,4 @@ pyrealsense2
 matplotlib
 seaborn
 pytest
+tensorboard
