@@ -16,14 +16,13 @@ model: realdepth
 pretrained_encoder: true
 # pretrained_checkpoint: experiments/realsense/checkpoints/best.pth  # Optional: load weights
 
-# Training — three-stage
+# Training — two-stage
 epochs: 80
 batch_size: 2
 lr: 0.0001
 weight_decay: 0.0001
-encoder_lr: 0.00001        # Lower LR for pretrained encoder
-freeze_all_epochs: 10      # Stage 1: train only ConvGRU
-freeze_encoder_epochs: 30  # Stage 2: train ConvGRU + decoder (cumulative)
+encoder_lr: 0.00001        # Lower LR for pretrained encoder (stage 2)
+freeze_encoder_epochs: 30  # Stage 1: freeze encoder, train ConvGRU + decoder
 
 # Loss
 w_l1: 1.0

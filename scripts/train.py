@@ -2,10 +2,9 @@
 RealDepth Training - python scripts/train.py
 Config: configs/realsense.yaml (edit to customize settings)
 
-Three-stage training strategy:
-    Stage 1 (freeze_all_epochs): Freeze encoder + decoder, train only ConvGRU
-    Stage 2 (freeze_encoder_epochs): Freeze encoder, train ConvGRU + decoder
-    Stage 3 (remaining epochs): Unfreeze all, end-to-end fine-tuning with lower encoder LR
+Two-stage training strategy:
+    Stage 1 (freeze_encoder_epochs): Freeze encoder, train ConvGRU + decoder
+    Stage 2 (remaining epochs): Unfreeze all, end-to-end fine-tuning with lower encoder LR
 
 Optionally loads a pretrained checkpoint to initialize encoder + decoder weights.
 Temporal consistency loss penalizes flicker between consecutive predictions.
@@ -78,8 +77,7 @@ class Trainer:
         self.temporal_criterion = TemporalConsistencyLoss().to(self.device)
         self.w_temporal = cfg.get('w_temporal', 0.5)
 
-        # Stage boundaries
-        self.freeze_all_epochs = cfg.get('freeze_all_epochs', 10)
+        # Stage boundary
         self.freeze_encoder_epochs = cfg.get('freeze_encoder_epochs', 30)
 
         # Optimizer with separate LR for encoder, decoder, and ConvGRU
@@ -108,23 +106,16 @@ class Trainer:
         }
 
     def train(self):
-        # Stage 1: freeze encoder + decoder, train only ConvGRU
-        if self.freeze_all_epochs > 0:
-            print(f"\n--- Stage 1: Train only ConvGRU for {self.freeze_all_epochs} epochs ---")
-            self.model.freeze_encoder()
-            self.model.freeze_decoder()
+        # Stage 1: freeze encoder, train ConvGRU + decoder
+        print(f"\n--- Stage 1: Freeze encoder, train ConvGRU + decoder for {self.freeze_encoder_epochs} epochs ---")
+        self.model.freeze_encoder()
 
         for epoch in range(self.cfg['epochs']):
             self.epoch = epoch
 
-            # Stage 2: unfreeze decoder
-            if epoch == self.freeze_all_epochs:
-                print(f"\n--- Stage 2: Unfreezing decoder at epoch {epoch} ---")
-                self.model.unfreeze_decoder()
-
-            # Stage 3: unfreeze encoder
+            # Stage 2: unfreeze encoder with lower LR
             if epoch == self.freeze_encoder_epochs:
-                print(f"\n--- Stage 3: Unfreezing encoder at epoch {epoch} ---")
+                print(f"\n--- Stage 2: Unfreezing encoder (lower LR) at epoch {epoch} ---")
                 self.model.unfreeze_encoder()
 
             # Train
