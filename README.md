@@ -1,8 +1,21 @@
 # RealDepth
 
-Real-time monocular depth estimation using MobileNetV2 encoder, ConvGRU temporal fusion, and lightweight depthwise separable decoder. ~1.07M parameters, enabling real-time depth estimation on standard hardware with temporal consistency across video frames.
+Lightweight real-time monocular depth estimation (~1.07M params) with sim-to-real transfer. Train on synthetic data from NVIDIA Isaac Sim digital twins, deploy on real hardware.
 
-Dataset: RealSense D435i camera data (RGB + depth)
+## Motivation
+
+Building a general-purpose monocular depth model that works on arbitrary scenes requires massive, diverse datasets and large models (e.g., MiDaS uses 12+ datasets). For practical applications like robotics, warehouse automation, or indoor navigation, we don't need a model that works everywhere — we need one that works reliably in a **specific known environment**.
+
+Our approach: build a digital twin of the target environment in NVIDIA Isaac Sim, generate unlimited synthetic training data with perfect ground truth depth, and train a small, fast model that transfers to the real version of that scene. This makes the problem tractable for a lightweight architecture while still achieving useful real-world performance.
+
+## Goal
+
+Demonstrate that a compact (~1.07M parameter) monocular depth model can be:
+1. **Trained entirely (or primarily) on synthetic data** generated from an Isaac Sim digital twin
+2. **Transferred to the real world** via domain adaptation strategies (domain randomization, mixed synthetic+real fine-tuning)
+3. **Deployed in real-time** on standard hardware for the target environment
+
+The key research question: *How effectively can sim-to-real transfer work for monocular depth estimation at small model scale, and which domain adaptation strategies close the gap most efficiently?*
 
 ## Results
 
@@ -83,6 +96,19 @@ MobileNetV2 encoder + ConvGRU temporal fusion + lightweight depthwise separable 
 1. **Stage 1**: Freeze encoder + decoder, train only ConvGRU
 2. **Stage 2**: Freeze encoder, train ConvGRU + decoder
 3. **Stage 3**: Unfreeze all, end-to-end fine-tuning with lower encoder LR
+
+## Sim-to-Real Pipeline
+
+1. **Create digital twin** of the target environment in NVIDIA Isaac Sim
+2. **Generate synthetic dataset** with domain randomization (varied lighting, textures, camera noise):
+   ```bash
+   /home/nurtay/isaacsim/python.sh scripts/collect_isaac_sim.py --headless --usd_path "warehouse.usd" --num_frames 3000 --num_objects 40
+   ```
+3. **Train on synthetic data** → evaluate on real data → measure sim-to-real gap
+4. **Domain adaptation** — apply strategies to close the gap:
+   - Domain randomization in Isaac Sim
+   - Fine-tuning on small real-world dataset (collected via RealSense D435i)
+   - Mixed synthetic + real training
 
 ## License
 

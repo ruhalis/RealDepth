@@ -209,7 +209,9 @@ __marimo__/
 collected_dataset/
 dataset/
 experiments/
+inference_output/
 CLAUDE.md
 .vscode
 
 .DS_Store
+assets/
