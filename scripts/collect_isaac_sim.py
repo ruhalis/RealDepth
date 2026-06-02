@@ -20,6 +20,7 @@ Usage (run from Isaac Sim's python):
 """
 
 import argparse
+import json
 import math
 import sys
 from datetime import datetime
@@ -38,8 +39,20 @@ parser.add_argument("--output_dir", type=str, default="",
                     help="Output directory (default: collected_dataset/<timestamp>)")
 parser.add_argument("--num_frames", type=int, default=3000,
                     help="Total number of frames to collect")
-parser.add_argument("--width", type=int, default=640)
-parser.add_argument("--height", type=int, default=480)
+parser.add_argument("--width", type=int, default=640,
+                    help="Base image width (used as resolution budget when "
+                         "randomizing aspect ratio)")
+parser.add_argument("--height", type=int, default=480,
+                    help="Fallback image height (used when aspect randomization is off)")
+parser.add_argument("--fov_range", type=float, nargs=2, default=[50.0, 100.0],
+                    help="Min / max horizontal FOV in degrees, sampled per scene")
+parser.add_argument("--aspect_ratios", type=float, nargs="+",
+                    default=[1.3333, 1.7778, 1.0, 0.75],
+                    help="Set of width/height aspect ratios sampled per scene")
+parser.add_argument("--scene_gap", type=int, default=50,
+                    help="Frame-number gap inserted between scenes so "
+                         "SequenceDataset/split_dataset treat each scene as a "
+                         "separate sequence (one camera per sequence)")
 parser.add_argument("--num_objects", type=int, default=40,
                     help="Number of random objects to spawn per scene")
 parser.add_argument("--fps", type=int, default=30,
@@ -552,6 +565,43 @@ def _save_intrinsics(output_dir, width, height, camera):
     log(f"Saved intrinsics to {path}")
 
 
+def _resolution_for_aspect(aspect, base_width):
+    """Pick an (even) (width, height) for a target width/height aspect ratio,
+    using base_width as the resolution budget."""
+    width = int(round(base_width / 2.0)) * 2
+    height = int(round((base_width / aspect) / 2.0)) * 2
+    return max(width, 2), max(height, 2)
+
+
+def _set_camera_fov(stage, prim_path, fov_h_deg, width, height):
+    """Set the USD camera's aperture/focal so its horizontal FOV matches
+    fov_h_deg, with square pixels for the given resolution.
+
+    FOV depends only on aperture/focal ratio, so absolute units are irrelevant.
+    """
+    cam = UsdGeom.Camera(stage.GetPrimAtPath(prim_path))
+    focal = 24.0
+    h_aperture = 2.0 * focal * math.tan(math.radians(fov_h_deg) / 2.0)
+    v_aperture = h_aperture * (height / float(width))  # square pixels
+    cam.GetFocalLengthAttr().Set(focal)
+    cam.GetHorizontalApertureAttr().Set(h_aperture)
+    cam.GetVerticalApertureAttr().Set(v_aperture)
+
+
+def _scene_intrinsics(camera, width, height, fov_h_deg):
+    """Return {fx, fy, cx, cy, width, height} for the current camera, reading
+    back the actual intrinsics with a FOV-based fallback."""
+    try:
+        m = camera.get_intrinsics_matrix()
+        fx, fy = float(m[0, 0]), float(m[1, 1])
+        cx, cy = float(m[0, 2]), float(m[1, 2])
+    except Exception:
+        fx = fy = width / (2.0 * math.tan(math.radians(fov_h_deg) / 2.0))
+        cx, cy = width / 2.0, height / 2.0
+    return {"fx": fx, "fy": fy, "cx": cx, "cy": cy,
+            "width": int(width), "height": int(height)}
+
+
 # ---------------------------------------------------------------------------
 # Scene loading
 # ---------------------------------------------------------------------------
@@ -635,8 +685,10 @@ def main():
     )
 
     # ---- Collection ----
-    frame_count = 0
+    frame_count = 0      # actual frames saved (drives the num_frames budget)
+    name_index = 0       # number embedded in the filename (gets a gap per scene)
     scene_idx = 0
+    intrinsics_meta = {}  # filename stem -> per-scene intrinsics dict
 
     while frame_count < args.num_frames and simulation_app.is_running():
         usd_path = scenes[scene_idx % num_scenes]
@@ -648,21 +700,34 @@ def main():
             usd_path, args.arena_size, rng, args.num_objects, nucleus_assets
         )
 
-        # Create camera
+        # --- Per-scene camera randomization: FOV + aspect ratio ---
+        scene_fov = float(rng.uniform(args.fov_range[0], args.fov_range[1]))
+        scene_aspect = float(rng.choice(args.aspect_ratios))
+        scene_w, scene_h = _resolution_for_aspect(scene_aspect, args.width)
+        log(f"Camera: FOV={scene_fov:.1f} deg, aspect={scene_aspect:.3f}, "
+            f"resolution={scene_w}x{scene_h}")
+
+        # Create camera at the sampled resolution
         camera = Camera(
             prim_path="/World/DepthCamera",
             position=np.array([0.0, 0.0, 1.5]),
             frequency=args.fps,
-            resolution=(args.width, args.height),
+            resolution=(scene_w, scene_h),
         )
         world.reset()
         camera.initialize()
         camera.add_distance_to_image_plane_to_frame()
 
+        # Apply the sampled FOV to the camera prim
+        _set_camera_fov(stage, "/World/DepthCamera", scene_fov, scene_w, scene_h)
+
         # Let physics settle
         log("Letting physics settle...")
         for _ in range(60):
             world.step(render=True)
+
+        # Read back the actual intrinsics for this scene's camera
+        scene_intr = _scene_intrinsics(camera, scene_w, scene_h, scene_fov)
 
         # Reset camera walk for new scene
         cam_state.reset()
@@ -713,21 +778,32 @@ def main():
             depth_clean = np.where(np.isfinite(depth), depth, 0.0)
             depth_mm = np.clip(depth_clean * 1000.0, 0, args.max_depth_mm).astype(np.uint16)
 
-            fname = f"{frame_count:06d}.png"
+            stem = f"{name_index:06d}"
+            fname = f"{stem}.png"
             cv2.imwrite(str(rgb_dir / fname), rgb_bgr)
             cv2.imwrite(str(depth_dir / fname), depth_mm)
+            intrinsics_meta[stem] = scene_intr
 
             frame_count += 1
             scene_frames += 1
+            name_index += 1
 
             if frame_count % 100 == 0:
                 log(f"  {frame_count}/{args.num_frames} frames collected "
                     f"(scene: {scene_label}, scene_frame: {scene_frames}/{target_frames})")
 
+        # Numbering gap between scenes so each scene is a separate sequence.
+        name_index += args.scene_gap
         scene_idx += 1
 
     # ---- Save intrinsics ----
-    _save_intrinsics(output_dir, args.width, args.height, camera)
+    # Per-frame intrinsics (machine-readable; used by split_dataset/SequenceDataset)
+    with open(output_dir / "intrinsics.json", "w") as f:
+        json.dump(intrinsics_meta, f)
+    log(f"Saved per-frame intrinsics for {len(intrinsics_meta)} frames to "
+        f"{output_dir / 'intrinsics.json'}")
+    # Human-readable summary for the last scene's camera
+    _save_intrinsics(output_dir, scene_w, scene_h, camera)
 
     log(f"\nDone! {frame_count} frames saved to {output_dir}")
     log(f"Scenes used: {num_scenes}")

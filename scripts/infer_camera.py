@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 # import pyrealsense2 as rs
 
-from realdepth.predictor import setup_device, load_checkpoint, preprocess_rgb_image, predict_depth, create_preprocessing_transform
+from realdepth.predictor import setup_device, load_checkpoint, preprocess_rgb_image, predict_depth, create_preprocessing_transform, fov_to_intrinsics
 from realdepth.visualization import save_depth_outputs, create_live_display
 
 
@@ -212,6 +212,14 @@ def run_inference_loop(camera, model, config, device, args):
     max_depth = config['max_depth']
     image_size = config['image_size']
 
+    # Camera-aware intrinsics (normalized, resolution-independent). Computed from
+    # the capture resolution so FOV/aspect are correct; None -> canonical camera.
+    cam_intrinsics = None
+    if getattr(args, 'fov', None) is not None:
+        cap_w, cap_h = parse_resolution(args.resolution)
+        cam_intrinsics = fov_to_intrinsics(args.fov, cap_w, cap_h)
+        print(f"Camera-aware inference with horizontal FOV = {args.fov} deg")
+
     # FPS tracking
     fps_tracker = FPSTracker()
     snapshot_count = 0
@@ -249,7 +257,7 @@ def run_inference_loop(camera, model, config, device, args):
                 rgb_tensor = preprocess_rgb_image(color_image, image_size)
 
                 # Inference
-                depth = predict_depth(model, rgb_tensor, device)
+                depth = predict_depth(model, rgb_tensor, device, intrinsics=cam_intrinsics)
 
                 # Update FPS
                 fps_tracker.update()
@@ -347,6 +355,10 @@ Controls:
                        help='Disable RealSense depth filters')
     parser.add_argument('--fixed-range', action='store_true',
                        help='Use fixed depth range (0-max_depth) instead of dynamic per-frame scaling')
+    parser.add_argument('--fov', type=float, default=None,
+                       help='Horizontal FOV (degrees) of the camera. Enables '
+                            'camera-aware inference; falls back to the canonical '
+                            'camera if omitted. ~69 for RealSense D435.')
     return parser.parse_args()
 
 

@@ -20,7 +20,14 @@ def get_model(model_name, max_depth=10.0, **kwargs):
     """
     if model_name == 'realdepth':
         pretrained = kwargs.get('pretrained_encoder', True)
-        return DepthEstimationNet(max_depth=max_depth, pretrained_encoder=pretrained)
+        camera_aware = kwargs.get('camera_aware', True)
+        ray_channels = kwargs.get('ray_channels', 2)
+        return DepthEstimationNet(
+            max_depth=max_depth,
+            pretrained_encoder=pretrained,
+            camera_aware=camera_aware,
+            ray_channels=ray_channels,
+        )
     else:
         raise ValueError(f"Unknown model: {model_name}. "
                          f"Available: 'realdepth'")

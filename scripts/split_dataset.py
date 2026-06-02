@@ -8,6 +8,7 @@ preserved within each sequence, but sequences are shuffled across splits
 for better diversity. Numbering gaps between sequences let
 SequenceDataset._find_valid_sequences() detect boundaries.
 """
+import json
 import random
 import shutil
 import yaml
@@ -30,9 +31,19 @@ def find_all_sessions(input_dir: Path) -> list:
 
 
 def get_image_pairs(session_dir: Path) -> list:
-    """Get all RGB-depth image pairs from a session, in sorted order."""
+    """Get all RGB-depth image pairs from a session, in sorted order.
+
+    Attaches per-frame camera intrinsics from the session's intrinsics.json
+    (if present) so they can travel with the sequence into the split output.
+    """
     rgb_dir = session_dir / "rgb"
     depth_dir = session_dir / "depth"
+
+    intrinsics_meta = {}
+    intrinsics_json = session_dir / "intrinsics.json"
+    if intrinsics_json.exists():
+        with open(intrinsics_json) as f:
+            intrinsics_meta = json.load(f)
 
     pairs = []
     for rgb_file in sorted(rgb_dir.glob("*.png")):
@@ -42,7 +53,8 @@ def get_image_pairs(session_dir: Path) -> list:
                 'session': session_dir.name,
                 'filename': rgb_file.name,
                 'rgb_path': rgb_file,
-                'depth_path': depth_file
+                'depth_path': depth_file,
+                'intrinsics': intrinsics_meta.get(rgb_file.stem),
             })
     return pairs
 
@@ -119,6 +131,7 @@ def copy_sequences(splits, output_dir, copy_intrinsics=None):
 
         current_idx = 0
         all_filenames = []
+        split_intrinsics = {}
 
         for seq_i, seq in enumerate(tqdm(seq_list, desc=split_name)):
             # Add gap between sequences (not before the first one)
@@ -126,18 +139,28 @@ def copy_sequences(splits, output_dir, copy_intrinsics=None):
                 current_idx += SEQUENCE_GAP
 
             for pair in seq:
-                new_filename = f"{current_idx:06d}.png"
+                stem = f"{current_idx:06d}"
+                new_filename = f"{stem}.png"
 
                 shutil.copy2(pair['rgb_path'], rgb_dir / new_filename)
                 shutil.copy2(pair['depth_path'], depth_dir / new_filename)
 
-                all_filenames.append(f"{current_idx:06d}")
+                if pair.get('intrinsics') is not None:
+                    split_intrinsics[stem] = pair['intrinsics']
+
+                all_filenames.append(stem)
                 current_idx += 1
 
         # Write filenames index
         with open(split_dir / "filenames.txt", 'w') as f:
             for name in all_filenames:
                 f.write(f"{name}\n")
+
+        # Write per-frame intrinsics for this split (used by SequenceDataset)
+        if split_intrinsics:
+            with open(split_dir / "intrinsics.json", 'w') as f:
+                json.dump(split_intrinsics, f)
+            print(f"  wrote intrinsics.json ({len(split_intrinsics)} frames)")
 
     # Copy intrinsics
     if copy_intrinsics and copy_intrinsics.exists():

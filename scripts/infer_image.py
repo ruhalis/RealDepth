@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-from realdepth.predictor import setup_device, load_checkpoint, preprocess_rgb_image, predict_depth
+from realdepth.predictor import setup_device, load_checkpoint, preprocess_rgb_image, predict_depth, fov_to_intrinsics
 
 def parse_args():
     """Parse command-line arguments"""
@@ -26,6 +26,10 @@ def parse_args():
                        help='Path to input RGB image')
     parser.add_argument('--checkpoint', '-c', type=str, required=True,
                        help='Path to model checkpoint (.pth)')
+    parser.add_argument('--fov', type=float, default=None,
+                       help='Horizontal FOV (degrees) of the source camera. '
+                            'Enables camera-aware inference; if omitted the '
+                            'model uses its canonical camera. e.g. ~69 for RealSense D435.')
 
     return parser.parse_args()
 
@@ -168,7 +172,12 @@ def main():
     # Run inference
     print("\nRunning inference...")
     rgb_tensor = preprocess_rgb_image(image_bgr, config['image_size'])
-    depth_pred = predict_depth(model, rgb_tensor, device)
+    intrinsics = None
+    if args.fov is not None:
+        h, w = image_bgr.shape[:2]
+        intrinsics = fov_to_intrinsics(args.fov, w, h)
+        print(f"Camera-aware inference with horizontal FOV = {args.fov} deg")
+    depth_pred = predict_depth(model, rgb_tensor, device, intrinsics=intrinsics)
     
     depth_pred_mm = depth_pred * 1000
     print(f"Prediction range:   {depth_pred.min():.2f}m - {depth_pred.max():.2f}m "
