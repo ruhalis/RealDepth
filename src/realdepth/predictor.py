@@ -1,6 +1,7 @@
 """
 Core functionality for depth prediction inference.
 """
+import math
 from pathlib import Path
 import torch
 import torchvision.transforms as T
@@ -45,7 +46,12 @@ def load_checkpoint(checkpoint_path, device):
     model_name = config.get('model', 'realdepth')
     max_depth = config.get('max_depth', 10.0)
 
-    model = get_model(model_name, max_depth=max_depth)
+    model = get_model(
+        model_name,
+        max_depth=max_depth,
+        camera_aware=config.get('camera_aware', True),
+        ray_channels=config.get('ray_channels', 2),
+    )
     model.load_state_dict(checkpoint['model'])
     model.to(device)
     model.eval()
@@ -84,12 +90,31 @@ def preprocess_rgb_image(image_bgr, image_size):
     return tensor.unsqueeze(0)
 
 
-@torch.no_grad()
-def predict_depth(model, rgb_tensor, device):
+def fov_to_intrinsics(fov_h_deg, width, height):
+    """Build a normalized intrinsics tensor [fx/W, fy/H, cx/W, cy/H] from a
+    horizontal FOV (degrees) assuming square pixels and a centered principal
+    point. Resolution-independent, so it matches the model's ray-map input.
     """
-    Run depth prediction inference
+    fov_h = math.radians(fov_h_deg)
+    fx = width / (2.0 * math.tan(fov_h / 2.0))  # pixels
+    fy = fx  # square pixels
+    fx_n = fx / width
+    fy_n = fy / height
+    return torch.tensor([[fx_n, fy_n, 0.5, 0.5]], dtype=torch.float32)
+
+
+@torch.no_grad()
+def predict_depth(model, rgb_tensor, device, intrinsics=None):
+    """
+    Run depth prediction inference.
+
+    Args:
+        intrinsics: optional (1, 4) normalized intrinsics tensor. When None,
+            the model falls back to its canonical camera.
     """
     rgb_tensor = rgb_tensor.to(device)
-    depth_tensor = model(rgb_tensor)  # (1, 1, H, W)
+    if intrinsics is not None:
+        intrinsics = intrinsics.to(device)
+    depth_tensor = model(rgb_tensor, intrinsics=intrinsics)  # (1, 1, H, W)
     depth_np = depth_tensor.squeeze().cpu().numpy()  # (H, W)
     return depth_np

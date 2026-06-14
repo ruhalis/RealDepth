@@ -42,7 +42,13 @@ class Trainer:
         self.vis_dir.mkdir(parents=True, exist_ok=True)
 
         # Model
-        self.model = get_model(cfg['model'], max_depth=cfg['max_depth']).to(self.device)
+        self.model = get_model(
+            cfg['model'],
+            max_depth=cfg['max_depth'],
+            pretrained_encoder=cfg.get('pretrained_encoder', True),
+            camera_aware=cfg.get('camera_aware', True),
+            ray_channels=cfg.get('ray_channels', 2),
+        ).to(self.device)
 
         # Load pretrained checkpoint if provided (encoder + decoder weights)
         pretrained_path = cfg.get('pretrained_checkpoint')
@@ -170,6 +176,7 @@ class Trainer:
             rgb_seq = batch['rgb'].to(self.device)      # (B, T, 3, H, W)
             depth_seq = batch['depth'].to(self.device)   # (B, T, 1, H, W)
             mask_seq = batch['mask'].to(self.device)     # (B, T, 1, H, W)
+            intrinsics = batch['intrinsics'].to(self.device)  # (B, 4)
 
             B, T = rgb_seq.shape[:2]
 
@@ -178,7 +185,7 @@ class Trainer:
             predictions = []
 
             for t in range(T):
-                pred = self.model(rgb_seq[:, t])
+                pred = self.model(rgb_seq[:, t], intrinsics=intrinsics)
                 loss, loss_dict = self.criterion(pred, depth_seq[:, t], mask_seq[:, t])
                 total_loss = total_loss + loss
                 predictions.append(pred)
@@ -226,6 +233,7 @@ class Trainer:
             rgb_seq = batch['rgb'].to(self.device)
             depth_seq = batch['depth'].to(self.device)
             mask_seq = batch['mask'].to(self.device)
+            intrinsics = batch['intrinsics'].to(self.device)
 
             B, T = rgb_seq.shape[:2]
 
@@ -233,9 +241,9 @@ class Trainer:
 
             # Run through sequence, evaluate on last frame
             for t in range(T - 1):
-                self.model(rgb_seq[:, t])
+                self.model(rgb_seq[:, t], intrinsics=intrinsics)
 
-            pred = self.model(rgb_seq[:, T - 1])
+            pred = self.model(rgb_seq[:, T - 1], intrinsics=intrinsics)
             loss, _ = self.criterion(pred, depth_seq[:, T - 1], mask_seq[:, T - 1])
 
             losses.append(loss.item())
@@ -287,16 +295,18 @@ class Trainer:
         batch = next(iter(self.val_loader))
         rgb_seq = batch['rgb'].to(self.device)
         depth_seq = batch['depth'].to(self.device)
+        intrinsics = batch['intrinsics'].to(self.device)
 
         actual_samples = min(num_samples, rgb_seq.shape[0])
         B, T = rgb_seq.shape[:2]
+        intr = intrinsics[:actual_samples]
 
         self.model.reset_temporal()
 
         # Run through sequence
         for t in range(T - 1):
-            self.model(rgb_seq[:actual_samples, t])
-        depth_pred = self.model(rgb_seq[:actual_samples, T - 1])
+            self.model(rgb_seq[:actual_samples, t], intrinsics=intr)
+        depth_pred = self.model(rgb_seq[:actual_samples, T - 1], intrinsics=intr)
 
         # Use last frame for visualization
         rgb_last = rgb_seq[:actual_samples, T - 1]

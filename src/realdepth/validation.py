@@ -23,7 +23,10 @@ def run_comprehensive_validation(model, loader, device, depth_thresholds=[3.0, 5
 
     with torch.no_grad():
         for batch in tqdm(loader, desc="Computing metrics"):
-            pred = model(batch['rgb'].to(device))
+            intr = batch.get('intrinsics')
+            if intr is not None:
+                intr = intr.to(device)
+            pred = model(batch['rgb'].to(device), intrinsics=intr)
             # Move to CPU immediately to avoid GPU memory accumulation
             all_preds.append(pred.cpu())
             all_targets.append(batch['depth'])  # Keep on CPU

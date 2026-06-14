@@ -14,6 +14,8 @@ sequence_length: 3   # Consecutive frames per training sample
 # Model
 model: realdepth
 pretrained_encoder: true
+camera_aware: true    # Feed per-sequence intrinsics (ray-direction map) into ConvGRU
+ray_channels: 2       # Channels of the ray-direction conditioning map
 # pretrained_checkpoint: experiments/realsense/checkpoints/best.pth  # Optional: load weights
 
 # Training — two-stage
@@ -35,8 +37,34 @@ w_temporal: 0.5
 # System
 num_workers: 4
 
+# Augmentation — sampled once per sequence, applied to all frames in it.
+# Photometric/sharpness/noise affect RGB only; hflip affects RGB+depth+mask.
+augment:
+  enable: true
+  hflip_prob: 0.5
+  photometric:
+    prob: 0.8
+    brightness: 0.3
+    contrast: 0.3
+    saturation: 0.3
+    hue: 0.05
+    gamma: 0.2
+  sharpness:
+    prob: 0.5
+    min_scale: 0.4    # random downscale factor before upscaling back
+    blur_max: 1.5     # max Gaussian blur radius
+  noise:
+    prob: 0.5
+    gaussian_std: 12.0
+    jpeg_prob: 0.3
+    jpeg_min_q: 40
+
 # Data Collection
 collection:
   fps: 30               # Camera frame rate (6, 15, or 30)
   duration: 5         # seconds
   image_size: [480, 640]
+  # Per-scene camera randomization (Isaac Sim)
+  fov_range: [50.0, 100.0]              # horizontal FOV degrees
+  aspect_ratios: [1.3333, 1.7778, 1.0, 0.75]
+  scene_gap: 50                         # frame-number gap between scenes

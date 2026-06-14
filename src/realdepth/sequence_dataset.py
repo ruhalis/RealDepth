@@ -1,12 +1,20 @@
 """
 Sequential frame dataset for temporal depth estimation training
 """
+import json
 import torch
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 import numpy as np
 from pathlib import Path
 import torchvision.transforms as T
+
+from .augment import SequenceAugmentor
+
+
+# Canonical normalized intrinsics [fx/W, fy/H, cx/W, cy/H] used when a dataset
+# has no intrinsics.json (back-compat with fixed-camera datasets). ~60 deg FOV.
+CANONICAL_INTRINSICS = (0.866, 0.866, 0.5, 0.5)
 
 
 class SequenceDataset(Dataset):
@@ -19,18 +27,21 @@ class SequenceDataset(Dataset):
                     00000.png, 00001.png, ...
                 depth/
                     00000.png, 00001.png, ...
+                intrinsics.json   (optional; per-frame camera intrinsics)
 
     Detects sequence gaps via filename numbering — non-consecutive frame
     numbers indicate a new sequence (e.g., camera restart)
 
     Returns:
-        'rgb':   (T, 3, H, W)  — T consecutive RGB frames
-        'depth': (T, 1, H, W)  — T consecutive depth maps
-        'mask':  (T, 1, H, W)  — T validity masks
+        'rgb':        (T, 3, H, W)  — T consecutive RGB frames
+        'depth':      (T, 1, H, W)  — T consecutive depth maps
+        'mask':       (T, 1, H, W)  — T validity masks
+        'intrinsics': (4,)          — normalized [fx/W, fy/H, cx/W, cy/H]
     """
 
     def __init__(self, data_dir, sequence_length=3, image_size=(480, 640),
-                 max_depth=10.0, depth_scale=0.001, split='train'):
+                 max_depth=10.0, depth_scale=0.001, split='train',
+                 augment=False, augment_config=None):
         self.data_dir = Path(data_dir)
         self.sequence_length = sequence_length
         self.image_size = image_size
@@ -69,10 +80,19 @@ class SequenceDataset(Dataset):
             except ValueError:
                 self.frame_numbers.append(-1)
 
+        # Per-frame normalized intrinsics (resize-invariant). Falls back to a
+        # canonical camera when no intrinsics.json is present.
+        self.intrinsics = self._load_intrinsics(split_dir / 'intrinsics.json')
+
         # Build valid sequence start indices
         self.sequence_starts = self._find_valid_sequences()
         print(f"SequenceDataset {split}: {len(self.sequence_starts)} sequences "
-              f"(T={sequence_length}) from {len(self.rgb_files)} frames")
+              f"(T={sequence_length}) from {len(self.rgb_files)} frames "
+              f"[augment={augment}, intrinsics={'json' if self._has_intrinsics else 'canonical'}]")
+
+        # Augmentation (train only)
+        self.augment = augment
+        self.augmentor = SequenceAugmentor(augment_config) if augment else None
 
         # Transforms
         self.rgb_transform = T.Compose([
@@ -81,6 +101,35 @@ class SequenceDataset(Dataset):
             T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         self.depth_transform = T.Resize(image_size)
+
+    def _load_intrinsics(self, path):
+        """Load per-frame normalized intrinsics keyed by frame stem.
+
+        intrinsics.json: {"000000": {fx, fy, cx, cy, width, height}, ...}
+        Returns dict[str, tuple] of normalized (fx/W, fy/H, cx/W, cy/H).
+        """
+        self._has_intrinsics = path.exists()
+        if not self._has_intrinsics:
+            return {}
+
+        with open(path) as f:
+            raw = json.load(f)
+
+        norm = {}
+        for key, k in raw.items():
+            w, h = k['width'], k['height']
+            norm[str(key)] = (
+                k['fx'] / w, k['fy'] / h, k['cx'] / w, k['cy'] / h,
+            )
+        return norm
+
+    def _intrinsics_for(self, idx):
+        """Normalized intrinsics tuple for the frame at file index `idx`."""
+        if self._has_intrinsics:
+            stem = self.rgb_files[idx].stem
+            if stem in self.intrinsics:
+                return self.intrinsics[stem]
+        return CANONICAL_INTRINSICS
 
     def _find_valid_sequences(self):
         """Find indices where a valid sequence of length T starts
@@ -106,39 +155,51 @@ class SequenceDataset(Dataset):
     def __len__(self):
         return len(self.sequence_starts)
 
-    def _load_frame(self, idx):
-        """Load a single RGB + depth frame"""
-        # RGB
+    def _load_raw(self, idx):
+        """Load a single frame as (PIL RGB, float32 depth array in meters)."""
         rgb = Image.open(self.rgb_files[idx]).convert('RGB')
-        rgb = self.rgb_transform(rgb)
-
-        # Depth (16-bit PNG in mm)
         depth = Image.open(self.depth_files[idx])
         depth = np.array(depth, dtype=np.float32) * self.depth_scale
-        depth = Image.fromarray(depth)
+        return rgb, depth
+
+    def _finalize(self, rgb_pil, depth_np):
+        """Resize + normalize a (possibly augmented) frame into tensors."""
+        rgb = self.rgb_transform(rgb_pil)
+
+        depth = Image.fromarray(depth_np)
         depth = self.depth_transform(depth)
         depth = torch.from_numpy(np.array(depth)).unsqueeze(0).float()
         depth = torch.clamp(depth, 0, self.max_depth)
 
-        # Validity mask
         mask = ((depth > 0) & (depth <= self.max_depth)).float()
-
         return rgb, depth, mask
 
     def __getitem__(self, idx):
         start = self.sequence_starts[idx]
-        rgbs, depths, masks = [], [], []
+        intr = list(self._intrinsics_for(start))
 
+        # Sample one augmentation policy for the whole sequence.
+        params = None
+        if self.augment:
+            params = self.augmentor.sample(np.random.default_rng())
+            if params and params.get('flip'):
+                intr[2] = 1.0 - intr[2]  # mirror principal point cx_n
+
+        rgbs, depths, masks = [], [], []
         for t in range(self.sequence_length):
-            rgb, depth, mask = self._load_frame(start + t)
+            rgb_pil, depth_np = self._load_raw(start + t)
+            if params is not None:
+                rgb_pil, depth_np = self.augmentor.apply(rgb_pil, depth_np, params)
+            rgb, depth, mask = self._finalize(rgb_pil, depth_np)
             rgbs.append(rgb)
             depths.append(depth)
             masks.append(mask)
 
         return {
-            'rgb': torch.stack(rgbs),      # (T, 3, H, W)
+            'rgb': torch.stack(rgbs),       # (T, 3, H, W)
             'depth': torch.stack(depths),   # (T, 1, H, W)
             'mask': torch.stack(masks),     # (T, 1, H, W)
+            'intrinsics': torch.tensor(intr, dtype=torch.float32),  # (4,)
         }
 
 
@@ -150,6 +211,7 @@ def create_sequence_dataloaders(cfg):
             - data_dir, batch_size, image_size, max_depth
             - sequence_length (default: 3)
             - num_workers, depth_scale (optional)
+            - augment (optional dict): augmentation config (train only)
 
     Returns:
         (train_loader, val_loader)
@@ -162,6 +224,9 @@ def create_sequence_dataloaders(cfg):
     num_workers = cfg.get('num_workers', 4)
     depth_scale = cfg.get('depth_scale', 0.001)
 
+    augment_config = cfg.get('augment', {})
+    augment_enabled = bool(augment_config.get('enable', False)) if augment_config else False
+
     train_dataset = SequenceDataset(
         data_dir=data_dir,
         sequence_length=sequence_length,
@@ -169,6 +234,8 @@ def create_sequence_dataloaders(cfg):
         max_depth=max_depth,
         depth_scale=depth_scale,
         split='train',
+        augment=augment_enabled,
+        augment_config=augment_config,
     )
     val_dataset = SequenceDataset(
         data_dir=data_dir,
@@ -177,6 +244,7 @@ def create_sequence_dataloaders(cfg):
         max_depth=max_depth,
         depth_scale=depth_scale,
         split='val',
+        augment=False,
     )
 
     pin_memory = torch.cuda.is_available()
