@@ -19,9 +19,9 @@ The key research question: *How effectively can sim-to-real transfer work for mo
 
 ## Results
 
-Training visualization showing RGB inputs (left), ground truth depth image (center) and predicted depth maps (right):
+Training visualization showing RGB inputs (left), RealSense ground-truth depth (center) and our network's predicted depth (right). Depth is colorized as a heatmap — **near = red, far = blue**:
 
-![Training Results](assets/epoch99.jpg)
+![Training Results](assets/epoch99_heatmap.png)
 
 ## Installation
 

@@ -213,4 +213,7 @@ inference_output/
 .vscode
 
 .DS_Store
-assets/
+# Ignore assets/ contents except README images
+assets/*
+!assets/*.png
+!assets/*.jpg
