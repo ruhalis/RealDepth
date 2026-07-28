@@ -208,6 +208,7 @@ __marimo__/
 
 collected_dataset/
 dataset/
+dataset_kuka/
 experiments/
 inference_output/
 .vscode

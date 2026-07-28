@@ -8,6 +8,7 @@ preserved within each sequence, but sequences are shuffled across splits
 for better diversity. Numbering gaps between sequences let
 SequenceDataset._find_valid_sequences() detect boundaries.
 """
+import argparse
 import json
 import random
 import shutil
@@ -172,16 +173,24 @@ def main():
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
 
-    INPUT_DIR = "collected_dataset"
-    OUTPUT_DIR = "dataset"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', default=str(project_root / 'collected_dataset'),
+                        help='Directory containing session folders (each with rgb/ and depth/)')
+    parser.add_argument('--output', default=str(project_root / 'dataset'),
+                        help='Output directory for train/val/test splits')
+    parser.add_argument('--config', default=str(project_root / 'configs' / 'realsense.yaml'),
+                        help='Config YAML providing sequence_length')
+    parser.add_argument('--sessions', nargs='+', default=None,
+                        help='Only use these session folder names (default: all)')
+    args = parser.parse_args()
+
     TRAIN_RATIO = 0.8
     VAL_RATIO = 0.1
     TEST_RATIO = 0.1
     SEED = 42
 
     # Load sequence_length from config
-    config_path = project_root / 'configs' / 'realsense.yaml'
-    with open(config_path) as f:
+    with open(args.config) as f:
         cfg = yaml.safe_load(f)
     sequence_length = cfg.get('sequence_length', 3)
 
@@ -193,8 +202,8 @@ def main():
         VAL_RATIO /= total_ratio
         TEST_RATIO /= total_ratio
 
-    input_dir = project_root / INPUT_DIR
-    output_dir = project_root / OUTPUT_DIR
+    input_dir = Path(args.input)
+    output_dir = Path(args.output)
 
     if not input_dir.exists():
         print(f"Error: Input directory '{input_dir}' does not exist!")
@@ -202,6 +211,12 @@ def main():
 
     # Find all sessions
     sessions = find_all_sessions(input_dir)
+    if args.sessions:
+        sessions = [s for s in sessions if s.name in args.sessions]
+        missing = set(args.sessions) - {s.name for s in sessions}
+        if missing:
+            print(f"Error: Session(s) not found in '{input_dir}': {sorted(missing)}")
+            return
     if not sessions:
         print(f"Error: No valid sessions found in '{input_dir}'!")
         print("Expected structure: input_dir/session_name/rgb/*.png and depth/*.png")

@@ -88,6 +88,15 @@ class DepthEstimationNet(nn.Module):
         else:
             gru_input = bottleneck
 
+        # Stale state from a different batch size or resolution (e.g. a
+        # partial final batch) cannot be carried over — start fresh.
+        if (self.hidden_state is not None
+                and self.hidden_state.shape[0] != gru_input.shape[0]):
+            self.hidden_state = None
+        if (self.hidden_state is not None
+                and self.hidden_state.shape[2:] != gru_input.shape[2:]):
+            self.hidden_state = None
+
         self.hidden_state = self.temporal(gru_input, self.hidden_state)
         features[4] = self.hidden_state
 

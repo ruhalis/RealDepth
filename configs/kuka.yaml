@@ -1,0 +1,68 @@
+# RealDepth - KUKA table scene (Isaac Sim, fixed overhead D455)
+# =============================================================
+# Source: /home/rassul_pc/mono_depth_kuka/collected_dataset/kuka_v5
+# 1000 independent stills (car re-placed randomly each frame), 640x338,
+# depth 0.54-2.88 m. Frames are NOT temporally continuous, so training
+# uses single-frame sequences and no temporal consistency loss.
+#
+# Split:
+#   python scripts/split_dataset.py \
+#       --input /home/rassul_pc/mono_depth_kuka/collected_dataset \
+#       --sessions kuka_v5 --output dataset_kuka --config configs/kuka.yaml
+
+exp_name: kuka
+exp_dir: ./experiments
+
+# Dataset
+data_dir: ./dataset_kuka
+max_depth: 3.0
+depth_scale: 0.001  # mm to meters
+image_size: [338, 640]  # native resolution of the collected frames
+sequence_length: 1   # independent stills — no real temporal sequences
+
+# Model
+model: realdepth
+pretrained_encoder: true
+camera_aware: true    # Feed per-sequence intrinsics (ray-direction map) into ConvGRU
+ray_channels: 2       # Channels of the ray-direction conditioning map
+
+# Training — two-stage
+epochs: 60
+batch_size: 8        # T=1 samples are cheap; larger batch than video configs
+lr: 0.0001
+weight_decay: 0.0001
+encoder_lr: 0.00001        # Lower LR for pretrained encoder (stage 2)
+freeze_encoder_epochs: 20  # Stage 1: freeze encoder, train ConvGRU + decoder
+
+# Loss
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0   # frames are independent — consecutive-prediction L1 is meaningless
+
+# System
+num_workers: 4
+
+# Augmentation — sampled once per sequence, applied to all frames in it.
+# Photometric/sharpness/noise affect RGB only; hflip affects RGB+depth+mask.
+augment:
+  enable: true
+  hflip_prob: 0.5
+  photometric:
+    prob: 0.8
+    brightness: 0.3
+    contrast: 0.3
+    saturation: 0.3
+    hue: 0.05
+    gamma: 0.2
+  sharpness:
+    prob: 0.5
+    min_scale: 0.4    # random downscale factor before upscaling back
+    blur_max: 1.5     # max Gaussian blur radius
+  noise:
+    prob: 0.5
+    gaussian_std: 12.0
+    jpeg_prob: 0.3
+    jpeg_min_q: 40
