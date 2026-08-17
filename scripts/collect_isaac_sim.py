@@ -809,7 +809,12 @@ def main():
     log(f"Scenes used: {num_scenes}")
     log("Run split_dataset.py next to create train/val/test splits.")
 
-    simulation_app.close()
+    # NOTE: simulation_app.close() spins forever on Kit teardown on Blackwell
+    # (sm_120 / RTX 5080) boxes. All outputs are already written above, so flush
+    # and hard-exit to avoid the shutdown hang (same workaround as verify_isaac.py).
+    sys.stderr.flush()
+    import os
+    os._exit(0)
 
 
 if __name__ == "__main__":
