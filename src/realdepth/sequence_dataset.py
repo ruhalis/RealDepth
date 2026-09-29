@@ -169,9 +169,17 @@ class SequenceDataset(Dataset):
         depth = Image.fromarray(depth_np)
         depth = self.depth_transform(depth)
         depth = torch.from_numpy(np.array(depth)).unsqueeze(0).float()
-        depth = torch.clamp(depth, 0, self.max_depth)
 
+        # Build the mask BEFORE clamping. Clamping first would pull every
+        # out-of-range reading down to exactly max_depth, where it still
+        # satisfies `<= max_depth` and so gets supervised as if max_depth were
+        # true ground truth. Sensor dropouts (0) and far/noisy returns must be
+        # excluded, not silently pinned to the range limit.
         mask = ((depth > 0) & (depth <= self.max_depth)).float()
+
+        # Clamp afterwards purely to keep masked-out values finite and bounded
+        # for downstream arithmetic; the mask is what decides supervision.
+        depth = torch.clamp(depth, 0, self.max_depth)
         return rgb, depth, mask
 
     def __getitem__(self, idx):

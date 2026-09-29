@@ -2,14 +2,27 @@
 """
 Split collected RealSense dataset into train/val/test sets.
 
-Splits at the sequence level: extracts all valid T-frame sequences,
-shuffles them, then assigns to train/val/test. Temporal order is
-preserved within each sequence, but sequences are shuffled across splits
-for better diversity. Numbering gaps between sequences let
+Two modes:
+
+--by-session (recommended): whole sessions are assigned to one split each,
+so no two splits ever contain frames from the same capture. Sessions are
+packed greedily (largest first, into whichever split is furthest below its
+target) so the *frame* ratios land near 80/10/10 even when session sizes
+differ wildly. Original frame numbers are preserved behind a per-session
+offset, so genuine temporal adjacency inside a session survives the split.
+
+default (sequence level): extracts all valid T-frame sequences, shuffles
+them, then assigns to train/val/test. Temporal order is preserved within
+each sequence, but sequences are shuffled across splits. Note this puts
+near-duplicate frames from one capture into different splits, which leaks
+between train and val/test.
+
+Numbering gaps between sequences/sessions let
 SequenceDataset._find_valid_sequences() detect boundaries.
 """
 import argparse
 import json
+import os
 import random
 import shutil
 import yaml
@@ -21,11 +34,22 @@ from tqdm import tqdm
 # SequenceDataset._find_valid_sequences() detects the boundary.
 SEQUENCE_GAP = 10
 
+# Numbering stride between sessions in --by-session output. Must exceed any
+# real frame number so session blocks never appear consecutive.
+SESSION_STRIDE = 1_000_000
 
-def find_all_sessions(input_dir: Path) -> list:
-    """Find all session folders (timestamps) in the input directory."""
+
+def find_all_sessions(input_dir: Path, exclude=()) -> list:
+    """Find all session folders (timestamps) in the input directory.
+
+    `exclude` holds folder names to skip -- e.g. a merged/ dataset that lives
+    alongside the raw sessions and would otherwise look like one itself.
+    """
+    exclude = set(exclude)
     sessions = []
     for item in input_dir.iterdir():
+        if item.name in exclude:
+            continue
         if item.is_dir() and (item / "rgb").exists() and (item / "depth").exists():
             sessions.append(item)
     return sorted(sessions)
@@ -115,6 +139,125 @@ def split_sequences(sequences, train_ratio, val_ratio, seed=42):
     }
 
 
+def split_by_session(all_session_pairs, train_ratio, val_ratio, test_ratio, seed=42):
+    """Assign whole sessions to splits, balancing on frame count.
+
+    Largest sessions are placed first, each into whichever split is currently
+    furthest below its frame-count target. This keeps the frame ratios close
+    to the requested ones even though session sizes vary by >10x, while
+    guaranteeing a session never straddles two splits.
+    """
+    sessions = [(d, p) for d, p in all_session_pairs if p]
+    total = sum(len(p) for _, p in sessions)
+
+    targets = {
+        'train': total * train_ratio,
+        'val': total * val_ratio,
+        'test': total * test_ratio,
+    }
+
+    # Shuffle first so equal-sized sessions don't always land in the same
+    # split, then place largest-first for good packing.
+    rng = random.Random(seed)
+    rng.shuffle(sessions)
+    sessions.sort(key=lambda sp: len(sp[1]), reverse=True)
+
+    splits = {'train': [], 'val': [], 'test': []}
+    counts = {'train': 0, 'val': 0, 'test': 0}
+
+    for session_dir, pairs in sessions:
+        name = max(targets, key=lambda k: targets[k] - counts[k])
+        splits[name].append((session_dir, pairs))
+        counts[name] += len(pairs)
+
+    # Emit each split in chronological session order.
+    for name in splits:
+        splits[name].sort(key=lambda sp: sp[0].name)
+
+    return splits
+
+
+def link_or_copy(src: Path, dst: Path):
+    """Hardlink when possible (same filesystem, no extra disk), else copy."""
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
+def copy_sessions(splits, output_dir):
+    """Write a session-level split.
+
+    Frames keep their original numbers behind a per-session offset, so real
+    consecutive frames stay consecutive and session boundaries read as a
+    huge gap to SequenceDataset._find_valid_sequences().
+    """
+    manifest = {}
+
+    for split_name, session_list in splits.items():
+        split_dir = output_dir / split_name
+        rgb_dir = split_dir / "rgb"
+        depth_dir = split_dir / "depth"
+        rgb_dir.mkdir(parents=True, exist_ok=True)
+        depth_dir.mkdir(parents=True, exist_ok=True)
+
+        total_frames = sum(len(p) for _, p in session_list)
+        print(f"\nWriting {split_name} set ({len(session_list)} sessions, "
+              f"{total_frames} frames)...")
+
+        all_filenames = []
+        split_intrinsics = {}
+        manifest[split_name] = []
+
+        for sess_i, (session_dir, pairs) in enumerate(
+                tqdm(session_list, desc=split_name)):
+            base = sess_i * SESSION_STRIDE
+
+            for pair in pairs:
+                src_stem = Path(pair['filename']).stem
+                try:
+                    frame_no = int(src_stem)
+                except ValueError:
+                    frame_no = len(all_filenames)
+
+                stem = f"{base + frame_no:08d}"
+                new_filename = f"{stem}.png"
+
+                dst_rgb = rgb_dir / new_filename
+                dst_depth = depth_dir / new_filename
+                if dst_rgb.exists():
+                    dst_rgb.unlink()
+                if dst_depth.exists():
+                    dst_depth.unlink()
+                link_or_copy(pair['rgb_path'], dst_rgb)
+                link_or_copy(pair['depth_path'], dst_depth)
+
+                if pair.get('intrinsics') is not None:
+                    split_intrinsics[stem] = pair['intrinsics']
+
+                all_filenames.append(stem)
+
+            manifest[split_name].append({
+                'session_id': session_dir.name,
+                'session_index': sess_i,
+                'frames': len(pairs),
+                'stem_offset': base,
+            })
+
+        with open(split_dir / "filenames.txt", 'w') as f:
+            for name in all_filenames:
+                f.write(f"{name}\n")
+
+        if split_intrinsics:
+            with open(split_dir / "intrinsics.json", 'w') as f:
+                json.dump(split_intrinsics, f)
+            print(f"  wrote intrinsics.json ({len(split_intrinsics)} frames)")
+
+    with open(output_dir / "session_manifest.json", 'w') as f:
+        json.dump(manifest, f, indent=2)
+    print(f"\nWrote session_manifest.json (which session went to which split)")
+
+
 def copy_sequences(splits, output_dir, copy_intrinsics=None):
     """Copy sequences to output, with consecutive numbering within each
     sequence and a gap between sequences."""
@@ -182,6 +325,13 @@ def main():
                         help='Config YAML providing sequence_length')
     parser.add_argument('--sessions', nargs='+', default=None,
                         help='Only use these session folder names (default: all)')
+    parser.add_argument('--exclude', nargs='+', default=['merged'],
+                        help='Subfolder names to ignore when scanning for sessions')
+    parser.add_argument('--by-session', action='store_true',
+                        help='Assign whole sessions to a single split each '
+                             '(no frames from one capture leak across splits)')
+    parser.add_argument('--yes', '-y', action='store_true',
+                        help='Overwrite an existing output directory without asking')
     args = parser.parse_args()
 
     TRAIN_RATIO = 0.8
@@ -210,7 +360,7 @@ def main():
         return
 
     # Find all sessions
-    sessions = find_all_sessions(input_dir)
+    sessions = find_all_sessions(input_dir, exclude=args.exclude)
     if args.sessions:
         sessions = [s for s in sessions if s.name in args.sessions]
         missing = set(args.sessions) - {s.name for s in sessions}
@@ -245,6 +395,34 @@ def main():
 
     if total_frames == 0:
         print("Error: No image pairs found!")
+        return
+
+    if args.by_session:
+        splits = split_by_session(all_session_pairs, TRAIN_RATIO, VAL_RATIO,
+                                  TEST_RATIO, SEED)
+
+        print(f"\nSplit sizes (session level):")
+        for name in ('train', 'val', 'test'):
+            n_sess = len(splits[name])
+            n_frames = sum(len(p) for _, p in splits[name])
+            pct = n_frames / total_frames * 100
+            print(f"  {name:5s}: {n_sess:3d} sessions, {n_frames:5d} frames "
+                  f"({pct:.1f}%)")
+
+        if output_dir.exists():
+            if not args.yes:
+                response = input(f"\nOutput directory '{output_dir}' already "
+                                 f"exists. Overwrite? [y/N]: ")
+                if response.lower() != 'y':
+                    print("Aborted.")
+                    return
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        copy_sessions(splits, output_dir)
+
+        print(f"\nDataset created successfully at: {output_dir.absolute()}")
+        print(f"Session stride in output numbering: {SESSION_STRIDE}")
         return
 
     # Extract all valid sequences

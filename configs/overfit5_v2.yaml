@@ -1,0 +1,51 @@
+# RealDepth - 5-image overfit, conditioned for the actual depth range
+# ===================================================================
+# Same 5 frames as configs/overfit5.yaml, two changes that matter for a
+# dataset this small:
+#
+#   1. max_depth 7.0 -> 2.0. These 5 frames span 0.60-1.54 m. Against a
+#      max_depth of 7.0 the whole scene lives in the bottom 22% of the
+#      sigmoid's range (targets 0.086-0.22), so the output layer has to sit
+#      far out on the saturating tail to express any of it. 2.0 puts the same
+#      geometry at 0.30-0.77 — the responsive part of the curve.
+#   2. batch_size 5 -> 1. With 5 frames, batch_size 5 is a single optimizer
+#      step per epoch, so overfit5.yaml's 400 epochs bought only 400 steps.
+#      batch_size 1 gives 5 steps per epoch, and the LR bump compounds it.
+#
+# Run:
+#   python scripts/train.py --config configs/overfit5_v2.yaml
+
+exp_name: overfit5_v2
+exp_dir: ./experiments
+
+data_dir: ./dataset_overfit5
+max_depth: 2.0       # scene is 0.60-1.54 m; see above
+depth_scale: 0.001
+image_size: [480, 640]
+sequence_length: 1
+
+model: realdepth
+pretrained_encoder: true
+camera_aware: true
+ray_channels: 2
+
+# 300 epochs x 5 steps = 1500 optimizer steps, ~4x overfit5.yaml.
+epochs: 300
+batch_size: 1
+lr: 0.0005
+weight_decay: 0.0001
+encoder_lr: 0.00005
+freeze_encoder_epochs: 0
+
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0
+
+num_workers: 0
+vis_samples: 5
+
+augment:
+  enable: false

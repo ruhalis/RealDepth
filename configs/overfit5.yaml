@@ -1,0 +1,60 @@
+# RealDepth - 5-image overfit sanity check
+# ========================================
+# Trains on 5 hand-picked frames from dataset_simple/train and nothing else.
+# The same 5 frames are also val and test, so "val loss" is the training loss
+# on unaugmented copies. This measures whether the architecture + loss + data
+# pipeline can fit the data at all; it says nothing about generalization.
+#
+# Build the subset first:
+#   python .../make_overfit_subset.py --source dataset_simple --split train \
+#       --output dataset_overfit5 --frames <5 stems>
+#
+# Run:
+#   python scripts/train.py --config configs/overfit5.yaml
+#
+# Expected: AbsRel should fall well below 0.05 and delta1 approach 1.0. If it
+# plateaus far from that on 5 images, the problem is upstream of the data
+# volume — depth scaling, the mask, or the loss weights.
+
+exp_name: overfit5
+exp_dir: ./experiments
+
+# Dataset
+data_dir: ./dataset_overfit5
+max_depth: 7.0       # matches configs/simple.yaml so the sigmoid scale is comparable
+depth_scale: 0.001   # mm to meters
+image_size: [480, 640]
+sequence_length: 1
+
+# Model
+model: realdepth
+pretrained_encoder: true   # ImageNet init; set pretrained_checkpoint below to
+                           # instead probe the fine-tuned model on these frames
+camera_aware: true
+ray_channels: 2
+
+# Training
+# 5 frames at batch_size 5 is one optimizer step per epoch, so epochs here are
+# steps. 400 steps is enough to see whether the loss is still descending.
+epochs: 400
+batch_size: 5
+lr: 0.0001
+weight_decay: 0.0001
+encoder_lr: 0.00001
+freeze_encoder_epochs: 0   # nothing to protect from overfitting — fit everything
+
+# Loss
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0
+
+# System
+num_workers: 0     # 5 samples — worker startup costs more than it saves
+vis_samples: 5     # show all five frames in the epoch grids
+
+# No augmentation: the whole point is to memorize these exact frames.
+augment:
+  enable: false

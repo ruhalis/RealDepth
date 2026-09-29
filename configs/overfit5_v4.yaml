@@ -1,0 +1,56 @@
+# RealDepth - 5-image overfit, rerun with RGB | ground-truth grids
+# ===========================================
+# Same 5 frames as overfit5.yaml / overfit5_v2.yaml. What each run taught:
+#
+#   v1  max_depth 7.0, batch_size 5, 400 epochs -> AbsRel 0.54, still falling.
+#       One optimizer step per epoch is only 400 steps; nowhere near converged,
+#       and a 0.6-1.5 m scene against max_depth 7.0 sits on the sigmoid's flat
+#       tail (targets 0.086-0.22).
+#   v2  max_depth 2.0, batch_size 1, 300 epochs -> train loss 0.02 but val loss
+#       0.33 on BYTE-IDENTICAL images. The gap is entirely BatchNorm: at
+#       batch_size 1 the encoder and decoder BN layers (decoder.py:22,24)
+#       normalize by single-image statistics in train mode and accumulate
+#       running estimates that eval mode then uses. Nothing to do with
+#       generalization — train and val are the same 5 files.
+#
+# v3 keeps v2's max_depth and buys steps with epochs instead of batch size, so
+# BN sees all 5 frames per step and its running stats match what eval mode uses.
+#
+# Run:
+#   python scripts/train.py --config configs/overfit5_v3.yaml
+
+exp_name: overfit5_v4
+exp_dir: ./experiments
+
+data_dir: ./dataset_overfit5
+max_depth: 2.0       # scene spans 0.60-1.54 m
+depth_scale: 0.001
+image_size: [480, 640]
+sequence_length: 1
+
+model: realdepth
+pretrained_encoder: true
+camera_aware: true
+ray_channels: 2
+
+# batch_size 5 = the whole dataset in one step, so 2000 epochs = 2000 steps
+# with BN statistics taken over all 5 frames every time.
+epochs: 2000
+batch_size: 5
+lr: 0.0005
+weight_decay: 0.0001
+encoder_lr: 0.00005
+freeze_encoder_epochs: 0
+
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0
+
+num_workers: 0
+vis_samples: 5
+
+augment:
+  enable: false

@@ -101,11 +101,13 @@ class RealSenseDataset(Dataset):
         depth = self.depth_transform(depth)
         depth = torch.from_numpy(np.array(depth)).unsqueeze(0).float()
 
-        # Clamp to max_depth
-        depth = torch.clamp(depth, 0, self.max_depth)
-
-        # Create valid mask
+        # Create valid mask BEFORE clamping -- clamping first would pull
+        # out-of-range readings to exactly max_depth, where they still pass
+        # `<= max_depth` and get supervised as if that were true ground truth.
         mask = ((depth > 0) & (depth <= self.max_depth)).float()
+
+        # Clamp afterwards only to keep masked-out values finite and bounded.
+        depth = torch.clamp(depth, 0, self.max_depth)
 
         return {
             'rgb': rgb,

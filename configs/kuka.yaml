@@ -10,7 +10,7 @@
 #       --input /home/rassul_pc/mono_depth_kuka/collected_dataset \
 #       --sessions kuka_v5 --output dataset_kuka --config configs/kuka.yaml
 
-exp_name: kuka
+exp_name: kuka_v2
 exp_dir: ./experiments
 
 # Dataset

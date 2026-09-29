@@ -1,0 +1,74 @@
+# RealDepth - simple_dataset (real RealSense D435I, 32 handheld captures)
+# ======================================================================
+# Source: simple_dataset/ — 32 sessions, 639 RGB-D pairs at 640x480.
+# Captures use capture_interval_seconds: 5.0, so frames within a session
+# are 150 source-frames apart: there are NO consecutive frames anywhere in
+# this dataset. Training is single-frame and the temporal loss is off.
+#
+# Merge + split (session level, so no capture straddles two splits):
+#   python scripts/split_dataset.py --input simple_dataset \
+#       --output dataset_simple --config configs/simple.yaml --by-session
+#   -> train 21 sessions / 508 frames, val 6 / 71, test 5 / 60
+#   See dataset_simple/session_manifest.json for the assignment.
+
+exp_name: simple_v1
+exp_dir: ./experiments
+
+# Dataset
+data_dir: ./dataset_simple
+max_depth: 7.0       # valid depth spans 0.16-41 m; p50 0.82, p99 6.9.
+                     # NOTE: sequence_dataset clamps to max_depth *before*
+                     # building the mask, so anything beyond this is trained
+                     # on as if it were exactly max_depth rather than being
+                     # masked out. 7.0 keeps p99 of real geometry intact
+                     # while discarding the long stereo-noise tail.
+depth_scale: 0.001   # mm to meters
+image_size: [480, 640]  # native resolution of the captures
+sequence_length: 1      # 5 s capture interval — no real temporal sequences
+
+# Model
+model: realdepth
+pretrained_encoder: true
+camera_aware: true    # per-frame intrinsics travel with the split (intrinsics.json)
+ray_channels: 2
+
+# Training — two-stage
+epochs: 60
+batch_size: 6        # 640x480 is ~1.4x the pixels of the KUKA config; drop to 4 on OOM
+lr: 0.0001
+weight_decay: 0.0001
+encoder_lr: 0.00001        # Lower LR for pretrained encoder (stage 2)
+freeze_encoder_epochs: 20  # Stage 1: freeze encoder, train ConvGRU + decoder
+
+# Loss
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0   # frames are independent — consecutive-prediction L1 is meaningless
+
+# System
+num_workers: 4
+
+# Augmentation — sampled once per sequence, applied to all frames in it.
+# Photometric/sharpness/noise affect RGB only; hflip affects RGB+depth+mask.
+augment:
+  enable: true
+  hflip_prob: 0.5
+  photometric:
+    prob: 0.8
+    brightness: 0.3
+    contrast: 0.3
+    saturation: 0.3
+    hue: 0.05
+    gamma: 0.2
+  sharpness:
+    prob: 0.5
+    min_scale: 0.4    # random downscale factor before upscaling back
+    blur_max: 1.5     # max Gaussian blur radius
+  noise:
+    prob: 0.5
+    gaussian_std: 12.0
+    jpeg_prob: 0.3
+    jpeg_min_q: 40

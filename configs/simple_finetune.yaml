@@ -1,0 +1,77 @@
+# RealDepth - post-training on simple_dataset from the KUKA sim checkpoint
+# =======================================================================
+# Starts from experiments/kuka_v2/checkpoints/best.pth (Isaac Sim tabletop,
+# 1000 synthetic stills) and adapts it to real RealSense D435I captures.
+# All 354 tensors transfer exactly — same architecture, camera_aware=True,
+# ray_channels=2.
+#
+# Two shifts the fine-tune has to absorb:
+#   1. sim -> real RGB appearance (the point of the run)
+#   2. max_depth 3.0 -> 7.0, which rescales the final sigmoid. The same
+#      0.82 m target that wanted sigmoid=0.273 now wants 0.117, so expect
+#      loss to start high and drop fast over the first few epochs.
+#
+# Run:
+#   python scripts/train.py --config configs/simple_finetune.yaml
+
+# v2 re-runs v1 after fixing mask-before-clamp in sequence_dataset._finalize:
+# readings beyond max_depth are now excluded rather than supervised as if
+# they were exactly max_depth. Far-field metrics in v1 are not comparable.
+exp_name: simple_ft_v2
+exp_dir: ./experiments
+
+pretrained_checkpoint: ./experiments/kuka_v2/checkpoints/best.pth
+
+# Dataset
+data_dir: ./dataset_simple
+max_depth: 7.0       # see configs/simple.yaml for the depth distribution
+depth_scale: 0.001   # mm to meters
+image_size: [480, 640]
+sequence_length: 1   # 5 s capture interval — no real temporal sequences
+
+# Model
+model: realdepth
+pretrained_encoder: true   # overwritten by pretrained_checkpoint below
+camera_aware: true
+ray_channels: 2
+
+# Training — fine-tune, so LRs are well below the from-scratch config and
+# the encoder freeze is short: the sim->real gap lives largely in the
+# encoder, so it should not stay frozen for long.
+epochs: 40
+batch_size: 8
+lr: 0.00005
+weight_decay: 0.0001
+encoder_lr: 0.000005
+freeze_encoder_epochs: 5
+
+# Loss
+w_l1: 1.0
+w_si: 0.5
+w_grad: 0.5
+w_ssim: 0.1
+w_berhu: 0.1
+w_temporal: 0.0   # frames are independent
+
+# System
+num_workers: 4
+
+augment:
+  enable: true
+  hflip_prob: 0.5
+  photometric:
+    prob: 0.8
+    brightness: 0.3
+    contrast: 0.3
+    saturation: 0.3
+    hue: 0.05
+    gamma: 0.2
+  sharpness:
+    prob: 0.5
+    min_scale: 0.4
+    blur_max: 1.5
+  noise:
+    prob: 0.5
+    gaussian_std: 12.0
+    jpeg_prob: 0.3
+    jpeg_min_q: 40

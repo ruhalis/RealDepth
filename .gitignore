@@ -218,3 +218,10 @@ inference_output/
 assets/*
 !assets/*.png
 !assets/*.jpg
+# Архивы выгрузок и датасеты — слишком тяжёлые для GitHub (лимит 100 МБ на файл)
+*.zip
+dataset_simple/
+dataset_overfit5/
+simple_dataset/
+circle_dataset/
+live_comparison/

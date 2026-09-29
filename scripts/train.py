@@ -29,6 +29,20 @@ from realdepth.sequence_dataset import create_sequence_dataloaders
 from realdepth.plot import save_loss_plots, save_component_plots
 
 
+def _colorize(norm):
+    """JET-colorize a normalized [0,1] HxW tensor into a 3xHxW tensor in [0,1].
+
+    Matches the colormap used by realdepth.visualization so training grids and
+    inference output read the same way.
+    """
+    import cv2
+
+    arr = (norm.detach().cpu().numpy() * 255).astype(np.uint8)
+    bgr = cv2.applyColorMap(arr, cv2.COLORMAP_JET)
+    rgb = bgr[:, :, ::-1].copy()  # cv2 returns BGR
+    return torch.from_numpy(rgb).permute(2, 0, 1).float().div(255).to(norm.device)
+
+
 class Trainer:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -287,39 +301,61 @@ class Trainer:
             self.writer.add_scalar(f'comprehensive_val/{metric_name}', metric_value, self.epoch)
 
     @torch.no_grad()
-    def _save_visualizations(self, num_samples=4):
-        """Save RGB | Ground Truth | Prediction grid using last frame of sequences."""
+    def _save_visualizations(self, num_samples=None):
+        """Save RGB | Ground Truth grid using last frame of sequences.
+
+        The prediction panel was removed by request, so this no longer runs the
+        model: the grid depends only on the val set, which means it is identical
+        at every epoch. Prediction quality is tracked through the scalar metrics
+        and the loss plots instead.
+        """
         import torchvision.utils as vutils
 
-        self.model.eval()
+        if num_samples is None:
+            num_samples = self.cfg.get('vis_samples', 4)
+
         batch = next(iter(self.val_loader))
         rgb_seq = batch['rgb'].to(self.device)
         depth_seq = batch['depth'].to(self.device)
-        intrinsics = batch['intrinsics'].to(self.device)
 
         actual_samples = min(num_samples, rgb_seq.shape[0])
         B, T = rgb_seq.shape[:2]
-        intr = intrinsics[:actual_samples]
-
-        self.model.reset_temporal()
-
-        # Run through sequence
-        for t in range(T - 1):
-            self.model(rgb_seq[:actual_samples, t], intrinsics=intr)
-        depth_pred = self.model(rgb_seq[:actual_samples, T - 1], intrinsics=intr)
 
         # Use last frame for visualization
         rgb_last = rgb_seq[:actual_samples, T - 1]
         depth_gt = depth_seq[:actual_samples, T - 1]
 
-        depth_gt_vis = (depth_gt / self.cfg['max_depth']).repeat(1, 3, 1, 1)
-        depth_pred_vis = (depth_pred / self.cfg['max_depth']).repeat(1, 3, 1, 1)
+        # Undo ImageNet normalization so RGB shares the [0,1] range the depth
+        # panels use. Without this, make_grid(normalize=True) would stretch the
+        # whole grid over the RGB tensor's ~[-2.1, 2.6] span and crush every
+        # depth panel into a narrow band of grey.
+        mean = torch.tensor([0.485, 0.456, 0.406], device=rgb_last.device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=rgb_last.device).view(1, 3, 1, 1)
+        rgb_vis = (rgb_last * std + mean).clamp(0, 1)
+
+        # Colorize GT over a per-sample range from its own valid pixels, so
+        # scene structure stays visible even when the scene occupies a small
+        # slice of [0, max_depth].
+        mask = (depth_gt > 0) & (depth_gt <= self.cfg['max_depth'])
+        depth_gt_vis = torch.empty_like(rgb_vis)
+        for i in range(actual_samples):
+            valid = depth_gt[i][mask[i]]
+            if valid.numel() > 0:
+                lo = torch.quantile(valid, 0.02)
+                hi = torch.quantile(valid, 0.98)
+            else:
+                lo = torch.zeros((), device=depth_gt.device)
+                hi = torch.full((), self.cfg['max_depth'], device=depth_gt.device)
+            span = torch.clamp(hi - lo, min=1e-3)
+            depth_gt_vis[i] = _colorize(((depth_gt[i, 0] - lo) / span).clamp(0, 1))
 
         vis_samples = []
         for i in range(actual_samples):
-            vis_samples.extend([rgb_last[i], depth_gt_vis[i], depth_pred_vis[i]])
+            vis_samples.extend([rgb_vis[i], depth_gt_vis[i]])
 
-        grid = vutils.make_grid(vis_samples, nrow=3, normalize=True, padding=2)
+        # normalize=False: every tile is already in [0,1] and must keep its own
+        # scale, otherwise the panels stop being comparable to each other.
+        grid = vutils.make_grid(vis_samples, nrow=2, normalize=False, padding=2)
         vutils.save_image(grid, self.vis_dir / f'epoch_{self.epoch:03d}.png')
         self.writer.add_image('validation/samples', grid, self.epoch)
 
