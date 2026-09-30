@@ -82,6 +82,11 @@ def main():
                                         k['cx'] / k['width'], k['cy'] / k['height']]],
                                       dtype=torch.float32)
 
+        # These captures are 5 s apart and independent, but the ConvGRU carries
+        # hidden state across calls — without a reset each frame's prediction
+        # would depend on which frames were processed before it.
+        if hasattr(model, 'reset_temporal'):
+            model.reset_temporal()
         rgb_t = preprocess_rgb_image(bgr, cfg['image_size'])
         pred = predict_depth(model, rgb_t, device, intrinsics=intrinsics)
 
